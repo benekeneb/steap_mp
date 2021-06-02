@@ -4,7 +4,6 @@ clear
 import gtsam.*
 import gpmp2.*
 
-
 %% small dataset
 dataset = generate2Ddataset('MobileMap1');
 rows = dataset.rows;

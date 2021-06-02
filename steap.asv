@@ -8,29 +8,25 @@ map_path = '~/catkin_ws/src/epic_drive_functions/maps/maze.png'
 resolution = 0.05
 
 %% small dataset
-map_matrix = imread(map_path)
-map_matrix = ~(map_matrix)
-
-rows = size(map_matrix, 1);
-cols = size(map_matrix, 2);
-cell_size = resolution;
-origin_x = 0;
-origin_y = 0;
-origin_point2 = Point2(origin_x, origin_y);
+dataset = generate2Ddataset('MobileMap1');
+rows = dataset.rows;
+cols = dataset.cols;
+cell_size = dataset.cell_size;
+origin_point2 = Point2(dataset.origin_x, dataset.origin_y);
 
 % signed distance field
-field = signedDistanceField2D(map_matrix, cell_size);
+field = signedDistanceField2D(dataset.map, cell_size);
 sdf = PlanarSDF(origin_point2, cell_size, field);
 
 % % plot sdf
 figure(2)
-plotSignedDistanceField2D(field, 0, 0, cell_size);
+plotSignedDistanceField2D(field, dataset.origin_x, dataset.origin_y, dataset.cell_size);
 title('Signed Distance Field')
 
 
 %% settings
 total_time_sec = 2.0;
-total_time_step = 15; %how many variable factors
+total_time_step = 10; %how many variable factors
 check_inter = 5;
 delta_t = total_time_sec / total_time_step;
 total_check_step = (check_inter + 1)*total_time_step;
@@ -63,7 +59,7 @@ pose_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 vel_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 
 % start and end conf
-start_pose = Pose2(9, 9, pi/2);
+start_pose = Pose2(-3, 1, pi/2);
 start_vel = [0, 0, 0]';
 
 end_pose = Pose2(3, 3, pi/2);
@@ -77,7 +73,7 @@ pause_time = total_time_sec / total_time_step;
 
 % % plot start / end configuration
 figure(1), hold on
-plotEvidenceMap2D(map_matrix, origin_x, origin_y, cell_size);
+plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
 title('Layout')
 plotPlanarMobileBase(robot.fk_model(), start_pose, [0.4 0.2], 'b', 1);
 plotPlanarMobileBase(robot.fk_model(), end_pose, [0.4 0.2], 'r', 1);
@@ -182,7 +178,7 @@ else
     plot_values = result;
 end
 figure(4), hold on
-plotEvidenceMap2D(map_matrix, origin_x, origin_y, cell_size);
+plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
 for i=0:total_plot_step
     p = plot_values.atPose2(symbol('x', i));
     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
