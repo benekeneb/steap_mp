@@ -4,14 +4,19 @@ clear
 import gtsam.*
 import gpmp2.*
 
-map_path = '~/catkin_ws/src/epic_drive_functions/maps/maze.png'
-resolution = 0.05
+%%ROS Config
+rosshutdown
+rosinit
 
 %% small dataset
 dataset = generate2Ddataset('MobileMap1');
 rows = dataset.rows;
 cols = dataset.cols;
 cell_size = dataset.cell_size;
+
+dataset.origin_x = 0;
+dataset.origin_y = 0;
+
 origin_point2 = Point2(dataset.origin_x, dataset.origin_y);
 
 % signed distance field
@@ -59,10 +64,10 @@ pose_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 vel_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 
 % start and end conf
-start_pose = Pose2(-3, 1, pi/2);
+start_pose = Pose2(2, 2, pi/2);
 start_vel = [0, 0, 0]';
 
-end_pose = Pose2(3, 3, pi/2);
+end_pose = Pose2(8, 8, pi/2);
 end_vel = [0, 0, 0]';
 
 avg_vel = [end_pose.x()-start_pose.x(); end_pose.y()-start_pose.y(); ...
@@ -149,23 +154,32 @@ end
 use_trustregion_opt = true;
 use_LM_opt = true;
 
-if use_trustregion_opt
-    parameters = DoglegParams;
-    parameters.setVerbosity('ERROR');
-    optimizer = DoglegOptimizer(graph, init_values, parameters);
-elseif use_LM_opt
-    parameters = LevenbergMarquardtParams;
-    parameters.setVerbosity('ERROR');
-    optimizer = LevenbergMarquardtOptimizer(graph, init_values, parameters);
-else
-    parameters = GaussNewtonParams;
-    parameters.setVerbosity('ERROR');
-    optimizer = GaussNewtonOptimizer(graph, init_values, parameters);
-end
+parameters = LevenbergMarquardtParams;
+parameters.setVerbosity('ERROR');
+optimizer = LevenbergMarquardtOptimizer(graph, init_values, parameters); %% init_values = trajectory prior, straight line from goal to end
+
 
 optimizer.optimize();
 result = optimizer.values();
 result.print('Final results')
+
+%% execute trajectory
+for i = 0 : total_time_step
+    key_pos = symbol('x', i);
+    goal = result.atPose2(key_pos)
+    send_goal(goal.x, goal.y, goal.theta)
+
+
+    
+end
+
+%% plot init_values
+% figure(5), hold on
+% plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+% for i=0:total_time_step
+%     p = init_values.atPose2(symbol('x', i));
+%     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+% end
 
 
 %% plot final values
@@ -184,3 +198,5 @@ for i=0:total_plot_step
     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
 end
 hold off;
+
+rosshutdown
