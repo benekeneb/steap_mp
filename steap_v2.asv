@@ -5,6 +5,8 @@ import gtsam.*
 import gpmp2.*
 
 %%ROS Config
+rosshutdown
+rosinit
 
 %% small dataset
 dataset = generate2Ddataset('MobileMap1');
@@ -62,10 +64,10 @@ pose_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 vel_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 
 % start and end conf
-start_pose = Pose2(2, 2, pi/2);
+start_pose = Pose2(8, 8, pi/2);
 start_vel = [0, 0, 0]';
 
-end_pose = Pose2(8, 8, pi/2);
+end_pose = Pose2(2, 2, pi/2);
 end_vel = [0, 0, 0]';
 
 avg_vel = [end_pose.x()-start_pose.x(); end_pose.y()-start_pose.y(); ...
@@ -164,9 +166,12 @@ result.print('Final results')
 %% execute trajectory
 for i = 0 : total_time_step
     key_pos = symbol('x', i);
-    result.atPose2(key_pos)
-%   s
+    goal = result.atPose2(key_pos)
+%     send_goal(goal.x, goal.y, goal.theta)
 
+    pose_estimate = Pose2(8, 8, pi/2);
+    
+    graph.add(PriorFactorPose2(key_pos, Pose2(8, 8, pi/2), pose_fix));
 
     
 end

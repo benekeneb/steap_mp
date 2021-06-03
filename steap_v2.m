@@ -24,9 +24,9 @@ field = signedDistanceField2D(dataset.map, cell_size);
 sdf = PlanarSDF(origin_point2, cell_size, field);
 
 % % plot sdf
-figure(2)
-plotSignedDistanceField2D(field, dataset.origin_x, dataset.origin_y, dataset.cell_size);
-title('Signed Distance Field')
+% figure(2)
+% plotSignedDistanceField2D(field, dataset.origin_x, dataset.origin_y, dataset.cell_size);
+% title('Signed Distance Field')
 
 
 %% settings
@@ -42,7 +42,7 @@ dynamics_sigma = 0.001;
 
 % robot model
 spheres_data = [...
-    0  0.0  0.0  0.0  0.2];
+    0  0.0  0.0  0.0  0.4];
 nr_body = size(spheres_data, 1);
 sphere_vec = BodySphereVector;
 for i=1:nr_body
@@ -163,15 +163,55 @@ optimizer.optimize();
 result = optimizer.values();
 result.print('Final results')
 
-%% execute trajectory
+%% STEAP
+figure(4)
+hold on
+plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+
+xlim([0 10])
+ylim([0 10])
+
+%plot original trajectory
+plot_inter = check_inter;
+total_plot_step = total_time_step * (plot_inter + 1);
+plot_values = interpolatePose2Traj(result, Qc_model, delta_t, plot_inter, 0, total_time_step);
+
+for i=0:total_plot_step
+    if i>0
+        p0_x = plot_values.atPose2(symbol('x', i)).x;
+        p0_y = plot_values.atPose2(symbol('x', i)).y
+        
+        p1_x = plot_values.atPose2(symbol('x', i-1)).x;
+        p1_y = plot_values.atPose2(symbol('x', i-1)).y;
+        
+        
+    %     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+        plot([p0_x p1_x], [p0_y p1_y], 'r')
+    end
+end
+
 for i = 0 : total_time_step
     key_pos = symbol('x', i);
     goal = result.atPose2(key_pos)
     send_goal(goal.x, goal.y, goal.theta)
-
-
     
+    [x, y, t] = get_pose_estimate();
+    plot(x, y, 'O g');
+    pose_estimate = Pose2(x, y, t)
+    
+    graph.add(PriorFactorPose2(key_pos, pose_estimate, pose_fix));
+    
+    %optimize again
+    parameters = LevenbergMarquardtParams;
+    parameters.setVerbosity('ERROR');
+    optimizer = LevenbergMarquardtOptimizer(graph, init_values, parameters);
+    optimizer.optimize();
+    result = optimizer.values();
 end
+
+
+result.print('Final results')
+
 
 %% plot init_values
 % figure(5), hold on
@@ -191,12 +231,19 @@ else
     total_plot_step = total_time_step;
     plot_values = result;
 end
-figure(4), hold on
-plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+
 for i=0:total_plot_step
-    p = plot_values.atPose2(symbol('x', i));
-    plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+    if i>0
+        p0_x = plot_values.atPose2(symbol('x', i)).x;
+        p0_y = plot_values.atPose2(symbol('x', i)).y
+        
+        p1_x = plot_values.atPose2(symbol('x', i-1)).x;
+        p1_y = plot_values.atPose2(symbol('x', i-1)).y;
+        
+        
+    %     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+        plot([p0_x p1_x], [p0_y p1_y], 'g')
+    end
 end
-hold off;
 
 rosshutdown

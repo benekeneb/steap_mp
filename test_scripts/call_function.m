@@ -1,7 +1,10 @@
+import gtsam.*
+import gpmp2.*
+
 clear;
 
 rosshutdown;
 rosinit;
 
 
-send_goal(2, 2, 1);
+[x, y, t] = get_pose_estimate();
