@@ -77,12 +77,12 @@ avg_vel = [end_pose.x()-start_pose.x(); end_pose.y()-start_pose.y(); ...
 pause_time = total_time_sec / total_time_step;
 
 % % plot start / end configuration
-figure(1), hold on
-plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
-title('Layout')
-plotPlanarMobileBase(robot.fk_model(), start_pose, [0.4 0.2], 'b', 1);
-plotPlanarMobileBase(robot.fk_model(), end_pose, [0.4 0.2], 'r', 1);
-hold off
+% figure(1), hold on
+% plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+% title('Layout')
+% plotPlanarMobileBase(robot.fk_model(), start_pose, [0.4 0.2], 'b', 1);
+% plotPlanarMobileBase(robot.fk_model(), end_pose, [0.4 0.2], 'r', 1);
+% hold off
 
 %% initial values
 init_values = Values;
@@ -150,6 +150,14 @@ for i = 0 : total_time_step
     end
 end
 
+%% plot init_values
+figure(5), hold on
+plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+for i=0:total_time_step
+    p = init_values.atPose2(symbol('x', i));
+    plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+end
+
 %% optimize!
 use_trustregion_opt = true;
 use_LM_opt = true;
@@ -211,15 +219,6 @@ end
 
 
 result.print('Final results')
-
-
-%% plot init_values
-% figure(5), hold on
-% plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
-% for i=0:total_time_step
-%     p = init_values.atPose2(symbol('x', i));
-%     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
-% end
 
 
 %% plot final values

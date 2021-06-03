@@ -2,6 +2,9 @@ function status = send_goal(pos_x, pos_y, euler)
     euler_vector = zeros(1, 3);
     euler_vector(1) = euler;
     quaternion_vector = eul2quat(euler_vector);
+    orient_x = quaternion_vector(3);
+    orient_y = quaternion_vector(2);
+    orient_z = quaternion_vector(1);
     orient_w = quaternion_vector(4);
 
     clear('goalReached', 'status')
@@ -12,9 +15,9 @@ function status = send_goal(pos_x, pos_y, euler)
     goalMsg.Pose.Position.Y = pos_y;
     goalMsg.Pose.Position.Z = 0;
 
-    goalMsg.Pose.Orientation.X = 0;
-    goalMsg.Pose.Orientation.Y = 0;
-    goalMsg.Pose.Orientation.Z = 0;
+    goalMsg.Pose.Orientation.X = orient_x;
+    goalMsg.Pose.Orientation.Y = orient_y;
+    goalMsg.Pose.Orientation.Z = orient_z;
     goalMsg.Pose.Orientation.W = orient_w;
 
     % goalMsg.Header.Seq = 9
