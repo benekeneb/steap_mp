@@ -52,7 +52,7 @@ function status = send_goal(pos_x, pos_y, euler)
         delta_y = abs(pos_y - y_ist)
         delta_t = abs(euler - t_ist)
         
-        if delta_x < (0.1 * pos_x) && delta_y < (0.1 * pos_y)
+        if delta_x < (0.15 * pos_x) && delta_y < (0.15 * pos_y)
             goalReached = 1;
         end
         fprintf("Driving\n");

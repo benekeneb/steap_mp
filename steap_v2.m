@@ -42,7 +42,7 @@ dynamics_sigma = 0.001;
 
 % robot model
 spheres_data = [...
-    0  0.0  0.0  0.0  0.4];
+    0  0.0  0.0  0.0  0.8];
 nr_body = size(spheres_data, 1);
 sphere_vec = BodySphereVector;
 for i=1:nr_body
@@ -64,7 +64,8 @@ pose_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 vel_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 
 % start and end conf
-start_pose = Pose2(2, 2, pi/2);
+[x_ist, y_ist, t_ist] = get_pose_estimate();
+start_pose = Pose2(x_ist, y_ist, t_ist);
 start_vel = [0, 0, 0]';
 
 end_pose = Pose2(8, 8, pi/2);
