@@ -151,12 +151,12 @@ for i = 0 : total_time_step
 end
 
 %% plot init_values
-figure(5), hold on
-plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
-for i=0:total_time_step
-    p = init_values.atPose2(symbol('x', i));
-    plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
-end
+% figure(5), hold on
+% plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+% for i=0:total_time_step
+%     p = init_values.atPose2(symbol('x', i));
+%     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+% end
 
 %% optimize!
 use_trustregion_opt = true;

@@ -31,17 +31,33 @@ function status = send_goal(pos_x, pos_y, euler)
     pause(4)
 
     %%Wait until Goal is reached
-    status_sub = rossubscriber('/move_base/status');
+%     status_sub = rossubscriber('/move_base/status');
+%     goalReached = 0;
+%     while goalReached == 0
+%         pause(1)
+%         status_msg = receive(status_sub,10);
+%         status = status_msg.StatusList.Status;
+%         if status == 3
+%             goalReached = 1;
+%         end
+%         fprintf("Driving\n");
+%     end
+
     goalReached = 0;
     while goalReached == 0
         pause(1)
-        status_msg = receive(status_sub,10);
-        status = status_msg.StatusList.Status;
-        if status == 3
+        [x_ist, y_ist, t_ist] = get_pose_estimate();
+        
+        delta_x = abs(pos_x - x_ist)
+        delta_y = abs(pos_y - y_ist)
+        delta_t = abs(euler - t_ist)
+        
+        if delta_x < (0.1 * pos_x) && delta_y < (0.1 * pos_y)
             goalReached = 1;
         end
         fprintf("Driving\n");
     end
+    
 
     fprintf("Goal Reached\n");
 end
