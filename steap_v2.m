@@ -8,6 +8,14 @@ import gpmp2.*
 rosshutdown
 rosinit
 
+server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallback,...
+                      'DataFormat','struct');
+req = rosmessage(server);
+
+% Arrays that saves current trajectory
+global x_array
+global y_array
+
 %% small dataset
 dataset = generate2Ddataset('MobileMap1');
 rows = dataset.rows;
@@ -68,7 +76,7 @@ vel_fix = noiseModel.Isotropic.Sigma(robot.dof(), 0.0001);
 start_pose = Pose2(x_ist, y_ist, t_ist);
 start_vel = [0, 0, 0]';
 
-end_pose = Pose2(8, 8, pi/2);
+end_pose = Pose2(8, 5, pi/2);
 end_vel = [0, 0, 0]';
 
 avg_vel = [end_pose.x()-start_pose.x(); end_pose.y()-start_pose.y(); ...
@@ -170,9 +178,9 @@ optimizer = LevenbergMarquardtOptimizer(graph, init_values, parameters); %% init
 
 optimizer.optimize();
 result = optimizer.values();
-result.print('Final results')
+% result.print('Final results')
 
-%% STEAP
+% %% STEAP
 figure(4)
 hold on
 plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
@@ -202,13 +210,27 @@ end
 for i = 0 : total_time_step
     key_pos = symbol('x', i);
     goal = result.atPose2(key_pos)
-    send_goal(goal.x, goal.y, goal.theta)
+    
+    goalReached = 0;
+    while goalReached == 0
+        pause(1)
+        [x_ist, y_ist, t_ist] = get_pose_estimate();
+        
+        delta_x = abs(goal.x - x_ist);
+        delta_y = abs(goal.y - y_ist);
+        delta_t = abs(goal.theta - t_ist);
+        
+        if delta_x < (0.15 * goal.x) && delta_y < (0.15 * goal.y)
+            goalReached = 1;
+        end
+        fprintf("Driving\n");
+    end
     
     [x, y, t] = get_pose_estimate();
     plot(x, y, 'O g');
-    pose_estimate = Pose2(x, y, t)
-    
-    graph.add(PriorFactorPose2(key_pos, pose_estimate, pose_fix));
+    pose_estimate = Pose2(x, y, t);
+    estimation_noise = noiseModel.Diagonal.Sigmas([0.1; 0.1; 15]);
+    graph.add(PriorFactorPose2(key_pos, pose_estimate, estimation_noise));
     
     %optimize again
     parameters = LevenbergMarquardtParams;
@@ -216,6 +238,13 @@ for i = 0 : total_time_step
     optimizer = LevenbergMarquardtOptimizer(graph, init_values, parameters);
     optimizer.optimize();
     result = optimizer.values();
+    
+    % interpolate again
+%     total_plot_step = total_time_step * (plot_inter + 1);
+%     plot_values = interpolatePose2Traj(result, Qc_model, delta_t, plot_inter, 0, total_time_step);
+    
+    
+   provide_trajectory(result);
 end
 
 
@@ -232,6 +261,10 @@ else
     plot_values = result;
 end
 
+% send_path(plot_values, "/move_base/TebLocalPlannerROS/via_points");
+
+provide_trajectory(plot_values);
+
 for i=0:total_plot_step
     if i>0
         p0_x = plot_values.atPose2(symbol('x', i)).x;
@@ -246,4 +279,26 @@ for i=0:total_plot_step
     end
 end
 
-rosshutdown
+%% FUNCTIONS
+
+function provide_trajectory(Values)
+    global x_array
+    global y_array
+
+    [x_array, y_array] = values_to_array(Values)
+end
+
+function resp = serviceCallback(~,req,resp)
+    global x_array;
+    global y_array;
+    resp.PathXArray(1) = x_array(1);
+    
+    i = 1;
+    while x_array(i) ~= 0 && y_array(i) ~= 0
+        resp.PathXArray(i) = x_array(i);
+        resp.PathYArray(i) = y_array(i);
+        i = i + 1;
+    end
+end
+
+

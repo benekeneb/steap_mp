@@ -1,0 +1,28 @@
+rosshutdown;
+rosinit;
+
+server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallback,...
+                      'DataFormat','struct');
+
+client = rossvcclient('/steap_plan','DataFormat','struct');
+
+req = rosmessage(server);
+% 
+% startMsg = rosmessage('geometry_msgs/PoseStamped','DataFormat','struct');
+% goalMsg = rosmessage('geometry_msgs/PoseStamped','DataFormat','struct');
+reqMsg = rosmessage(client);
+reqMsg.StartX = int64(0);
+reqMsg.StartY = int64(0);
+reqMsg.GoalX = int64(0);
+reqMsg.GoalY = int64(0);
+
+[x_array, y_array] = values_to_array(plot_values)
+
+response = call(client,reqMsg,'Timeout',5);
+
+function resp = serviceCallback(~,req,resp)
+    i = 1;
+    while x_array(i) ~= 0 && y_array(i) ~= 0
+        resp.PathXArray
+    end
+end

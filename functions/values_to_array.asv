@@ -1,0 +1,26 @@
+function path_array = values_to_path(values)
+
+    import gtsam.*
+    import gpmp2.*
+       
+    end_reached = 0;
+    i = 0;
+    while end_reached == 0
+        try
+            values.atPose2(symbol('x', i))
+        catch
+            end_reached = 1;
+            break;
+        end
+       
+        goalMsg.Pose.Position.X = values.atPose2(symbol('x', i)).x();
+        goalMsg.Pose.Position.Y = values.atPose2(symbol('x', i)).y();
+
+        path_msg.Poses(i + 1) = goalMsg;
+
+        i = i+1;
+    end
+        
+    path = path_msg;
+end
+   

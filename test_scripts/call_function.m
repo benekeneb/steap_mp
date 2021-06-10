@@ -7,4 +7,4 @@ rosshutdown;
 rosinit;
 
 
-[x, y, t] = get_pose_estimate();
+send_goal(5.00000233821, 2.00000136684, -3.14158949952);
