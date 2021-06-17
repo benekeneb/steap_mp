@@ -1,6 +1,5 @@
 function [x, y, t] = get_pose_estimate()
     tftree = rostf;
-    pause(1)
     tftree.AvailableFrames;
     pause(1)
     odom_to_base_link = getTransform(tftree, 'odom', 'base_link');

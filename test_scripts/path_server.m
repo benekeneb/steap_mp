@@ -14,11 +14,10 @@ reqMsg.StartY = 0;
 reqMsg.GoalX = 0;
 reqMsg.GoalY = 0;
 
-global x_array
-global y_array
+global x_array;
+global y_array;
 
-[x_array, y_array] = values_to_array(plot_values)
-x_array(1)
+[x_array, y_array] = values_to_array(plot_values);
 
 response = call(client,reqMsg,'Timeout',5);
 
