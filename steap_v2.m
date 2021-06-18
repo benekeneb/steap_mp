@@ -106,7 +106,7 @@ opt_setting = TrajOptimizerSetting(3);
 % 
 % opt_setting.setDogleg();
 
-test = ISAM2TrajOptimizer2DArm(robot, sdf, opt_setting);
+% test = ISAM2TrajOptimizer2DArm(robot, sdf, opt_setting);
 
 %% initial values
 init_values = Values;
