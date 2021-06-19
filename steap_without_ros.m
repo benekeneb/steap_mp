@@ -132,7 +132,7 @@ opt_setting = TrajOptimizerSetting(3);
 % 
 % opt_setting.setDogleg();
 
-%% initialize ISAM
+%% initialize STEAP / ISAM
 
 %init traj
 init_values = initPose2VectorTrajStraightLine(start_pose, zeros(3,1), end_pose, zeros(3,1), total_time_step);
@@ -145,7 +145,7 @@ marm_inc_inf.update();
 
 inc_inf_values = marm_inc_inf.values()
  
-% %% STEAP
+%% STEAP
 % figure(4)
 % hold on
 % plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
@@ -159,6 +159,7 @@ inc_inf_values = marm_inc_inf.values()
 % plot_values = interpolatePose2Traj(inc_inf_values, Qc_model, delta_t, plot_inter, 0, total_time_step);
 % plot_trajectory(plot_values, total_plot_step, 'r');
 % 
+%% execute Trajectory
 % for i = 0 : total_time_step - 1
 %     key_pos = symbol('x', i+1);
 %     goal = inc_inf_values.atPose2(key_pos);
@@ -182,7 +183,7 @@ inc_inf_values = marm_inc_inf.values()
 %     %update factor graph to perform incremental inference
 %     plot(x_ist, y_ist, 'O g');
 %     
-%     pose_estimate = Pose2(x, y, t);
+%     pose_estimate = Pose2(x_ist, y_ist, t_ist);
 %     estimation_noise = noiseModel.Diagonal.Sigmas([0.1; 0.1; 15]);
 %     marm_inc_inf.addPoseEstimate(i + 1, pose_estimate, estimation_noise);
 %     marm_inc_inf.update();
