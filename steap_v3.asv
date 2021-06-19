@@ -5,12 +5,12 @@ import gtsam.*
 import gpmp2.*
 
 %%ROS Config
-rosshutdown
-rosinit
-
-server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallback,...
-                      'DataFormat','struct');
-req = rosmessage(server);
+% rosshutdown
+% rosinit
+% 
+% server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallback,...
+%                       'DataFormat','struct');
+% req = rosmessage(server);
 
 % Arrays that saves current trajectory
 global x_array
@@ -39,30 +39,43 @@ end
 
 %% generate mobile arm
 
-base_T_arm = Pose3(Rot3(eye(3)), Point3([0,0,0]'));
-
+% base_T_arm = Pose3(Rot3(eye(3)), Point3([0,0,0]'));
 % arm: JACO2 6DOF arm
-alpha = [0]';
-a = [0]';
-d = [0]';
-% theta = [0, 0, 0, 0, 0, 0]';
-% abstract arm
-arm = Arm(0, a, alpha, d);
-% abstract mobile arm
-marm = Pose2MobileArm(arm, base_T_arm);
-% sphere data [id x y z r]
-spheres_data = [...
-0  0.0  0.0  0.0  0.8
-    ];
+% alpha = [0]';
+% a = [0]';
+% d = [0]';
+% % theta = [0, 0, 0, 0, 0, 0]';
+% % abstract arm
+% arm = Arm(0, a, alpha, d);
+% % abstract mobile arm
+% marm = Pose2MobileArm(arm, base_T_arm);
+% % sphere data [id x y z r]
+% spheres_data = [...
+% 0  0.0  0.0  0.0  0.8
+%     ];
+% 
+% nr_body = size(spheres_data, 1);
+% 
+% sphere_vec = BodySphereVector;
+% for i=1:nr_body
+%     sphere_vec.push_back(BodySphere(spheres_data(i,1), spheres_data(i,5), ...
+%         Point3(spheres_data(i,2:4)')));
+% end
+% arm_model = generateMobileArm('');
+% arm model
+arm_model = generateMobileArm('SimpleTwoLinksArm');
 
-nr_body = size(spheres_data, 1);
+% GP
+Qc = 1 * eye(5);
+Qc_model = noiseModel.Gaussian.Covariance(Qc);
 
-sphere_vec = BodySphereVector;
-for i=1:nr_body
-    sphere_vec.push_back(BodySphere(spheres_data(i,1), spheres_data(i,5), ...
-        Point3(spheres_data(i,2:4)')));
-end
-arm_model = Pose2MobileArmModel(marm, sphere_vec);
+% Obstacle avoid settings
+cost_sigma = 0.1;
+epsilon_dist = 0.1;
+
+% prior to start/goal
+pose_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
+vel_fix = noiseModel.Isotropic.Sigma(5, 0.0001); 
 
 %% settings
 error_mode = 0;
@@ -77,21 +90,9 @@ total_check_step = (check_inter + 1)*total_time_step;
 use_vehicle_dynamics = true;
 dynamics_sigma = 0.001;
 
-% GP
-Qc = 1 * eye(arm_model.dof());
-Qc_model = noiseModel.Gaussian.Covariance(Qc);
-
-% Obstacle avoid settings
-cost_sigma = 0.01;
-epsilon_dist = 0.2;
-
-% prior to start/goal
-pose_fix = noiseModel.Isotropic.Sigma(arm_model.dof(), 0.0001);
-vel_fix = noiseModel.Isotropic.Sigma(arm_model.dof(), 0.0001);
-
 % start and end conf
-[x_ist, y_ist, t_ist] = get_pose_estimate();
-start_vector = [x_ist, y_ist, t_ist];
+% [x_ist, y_ist, t_ist] = get_pose_estimate();
+start_vector = [2, 2, 0];
 start_pose = Pose2(x_ist, y_ist, t_ist);
 start_vel = [0, 0, 0];
 start_conf = Pose2Vector(start_pose, zeros(3,1));
@@ -137,18 +138,17 @@ opt_setting = TrajOptimizerSetting(3);
 %% initialize
 
 %init traj
-init_values = initPose2VectorTrajStraightLine(start_pose, end_pose, total_time_step);
+init_values = initPose2VectorTrajStraightLine(start_pose, zeros(3,1), end_pose, zeros(3,1), total_time_step);
 batch_values = BatchTrajOptimizePose2MobileArm(arm_model, sdf, start_conf, zeros(3,1), end_conf, zeros(3,1), init_values, opt_setting)
 
 marm_inc_inf = ISAM2TrajOptimizerPose2MobileArm(arm_model, sdf, opt_setting);
 marm_inc_inf.initFactorGraph(start_conf, zeros(3,1), end_conf, zeros(3,1));
-marm_inc_inf.initValues(batch_values)
+marm_inc_inf.initValues(batch_values);
+marm_inc_inf.update();
 
-% result.print('Final results')
-% 
+inc_inf_values = marm_inc_inf.values()
+ 
 % %% STEAP
-% isam = ISAM2;
-% 
 % figure(4)
 % hold on
 % plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
@@ -159,16 +159,16 @@ marm_inc_inf.initValues(batch_values)
 % %plot initial trajectory
 % plot_inter = check_inter;
 % total_plot_step = total_time_step * (plot_inter + 1);
-% plot_values = interpolatePose2Traj(result, Qc_model, delta_t, plot_inter, 0, total_time_step);
+% plot_values = interpolatePose2Traj(inc_inf_values, Qc_model, delta_t, plot_inter, 0, total_time_step);
 % plot_trajectory(plot_values, total_plot_step, 'r');
 % 
 % for i = 0 : total_time_step - 1
 %     key_pos = symbol('x', i+1);
-%     goal = result.atPose2(key_pos);
+%     goal = inc_inf_values.atPose2(key_pos);
 %     
 %     plot_inter = check_inter; %interpolate to next time step
 %     total_plot_step = total_time_step * (plot_inter + 1);
-%     exec_values = interpolatePose2Traj(result, Qc_model, delta_t, 5, i, i+1);
+%     exec_values = interpolatePose2Traj(inc_inf_values, Qc_model, delta_t, 5, i, i+1);
 %     plot_trajectory(exec_values, total_plot_step, 'b');
 %     
 %     coll_cost = CollisionCostPose2MobileBase2D(robot, sdf, exec_values, opt_setting); %calculate collision cost
@@ -177,7 +177,7 @@ marm_inc_inf.initValues(batch_values)
 %         error("At step %i, plan is not collision free (Collision Cost: %i)", i, coll_cost);
 %     end
 %     
-%     %execute Trajectory
+%     %execute Trajectory --> Send it to ROS
 %     provide_trajectory(exec_values, 6);
 %     [x_ist, y_ist, t_ist] = send_goal(goal.x, goal.y, goal.theta);
 %     
@@ -185,9 +185,11 @@ marm_inc_inf.initValues(batch_values)
 %     %update factor graph to perform incremental inference
 %     plot(x_ist, y_ist, 'O g');
 %     
-% %     pose_estimate = Pose2(x, y, t);
-% %     estimation_noise = noiseModel.Diagonal.Sigmas([0.1; 0.1; 15]);
-% %     graph.add(PriorFactorPose2(key_pos, pose_estimate, estimation_noise));
+%     pose_estimate = Pose2(x, y, t);
+%     estimation_noise = noiseModel.Diagonal.Sigmas([0.1; 0.1; 15]);
+%     marm_inc_inf.addPoseEstimate(i + 1, pose_estimate, estimation_noise);
+%     marm_inc_inf.update();
+%     inc_inf_values = marm_inc_inf.values();
 % %     
 % %     %optimize again
 % %     parameters = LevenbergMarquardtParams;
