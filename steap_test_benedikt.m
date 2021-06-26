@@ -1,3 +1,4 @@
+ 
 close all
 clear
 
@@ -13,10 +14,10 @@ import gpmp2.*
 % req = rosmessage(server);
 
 % Arrays that saves current trajectory
-global x_array
-global y_array
+%global x_array
+%global y_array
 
-%% small dataset
+%% generate map & sdf
 dataset = generate2Ddataset('MobileMap1');
 rows = dataset.rows;
 cols = dataset.cols;
@@ -37,8 +38,7 @@ for z = 1:size(field, 3)
     sdf.initFieldData(z-1, field(:,:,z)');
 end
 
-%% generate mobile arm
-
+%% generate mobile arm model
 % base_T_arm = Pose3(Rot3(eye(3)), Point3([0,0,0]'));
 % arm: JACO2 6DOF arm
 % alpha = [0]';
@@ -73,43 +73,61 @@ Qc_model = noiseModel.Gaussian.Covariance(Qc);
 cost_sigma = 0.1;
 epsilon_dist = 0.1;
 
-% prior to start/goal
-pose_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
-vel_fix = noiseModel.Isotropic.Sigma(5, 0.0001); 
+% noise model
+pose_fix_sigma = 0.0001;
+vel_fix_sigma = 0.0001;
+
+% prior to start/goal  >> You cannnot fix start and goal position because
+% its a SREAP problem and it involves change in pose i.e. replanning setup
+%pose_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
+%vel_fix = noiseModel.Isotropic.Sigma(5, 0.0001); 
 
 %% settings
 error_mode = 0;
 
 total_time_sec = 2.0;
-total_time_step = 10; %how many variable factors
-check_inter = 5;
+total_time_step = 10; %how many variable nodes
+total_check_step = 10;
 delta_t = total_time_sec / total_time_step;
-total_check_step = (check_inter + 1)*total_time_step;
+check_inter = total_check_step / total_time_step - 1;
+
+
+% check_inter = 5;
+% delta_t = total_time_sec / total_time_step;
+% total_check_step = (check_inter + 1)*total_time_step;
 
 % use 2d vehicle dynamics
 use_vehicle_dynamics = true;
 dynamics_sigma = 0.001;
 
 % start and end conf
-% [x_ist, y_ist, t_ist] = get_pose_estimate();
-start_vector = [2, 2, 0];
-start_pose = Pose2(x_ist, y_ist, t_ist);
-start_vel = [0, 0, 0];
-start_conf = Pose2Vector(start_pose, zeros(3,1));
+start_pose = Pose2(-1, 0, pi/2);
+start_conf = [0, 0]';
+pstart = Pose2Vector(start_pose, start_conf);
+start_vel = [0, 0, 0, 0, 0]';
 
-end_vector = [8, 5, pi/2];
-end_pose = Pose2(8, 5, pi/2);
-end_vel = [0, 0, 0]';
-end_conf = Pose2Vector(end_pose, zeros(3,1));
+end_pose = Pose2(1, 0, pi/2);
+end_conf = [1, 1]';
+pend = Pose2Vector(end_pose, end_conf);
+end_vel = [0, 0, 0, 0, 0]';
 
-avg_vel = [end_pose.x-start_pose.x; end_pose.y-start_pose.y; ...
-    end_pose.theta-start_pose.theta] / delta_t;
+avg_vel = [end_pose.x()-start_pose.x(); end_pose.y()-start_pose.y(); ...
+    end_pose.theta()-start_pose.theta(); (end_conf / total_time_step)] / delta_t;
+
 
 % plot param
 pause_time = total_time_sec / total_time_step;
 
 %optimization settings
-opt_setting = TrajOptimizerSetting(3);
+opt_setting = TrajOptimizerSetting(5);
+opt_setting.set_total_step(total_time_step);
+opt_setting.set_total_time(total_time_sec);
+opt_setting.set_epsilon(epsilon_dist);
+opt_setting.set_cost_sigma(cost_sigma);
+opt_setting.set_obs_check_inter(check_inter);
+opt_setting.set_conf_prior_model(pose_fix_sigma);
+opt_setting.set_vel_prior_model(vel_fix_sigma);
+opt_setting.set_Qc_model(Qc);
 % opt_setting.set_total_step(total_time_step);
 % opt_setting.set_total_time(total_time_sec);
 % opt_setting.set_conf_prior_model(pose_fix_sigma);
@@ -132,23 +150,40 @@ opt_setting = TrajOptimizerSetting(3);
 % opt_setting.set_Qc_model(Qc);
 % 
 % opt_setting.setDogleg();
+%% initial values
+% init_values = Values;
+% 
+% for i = 0 : total_time_step
+%     key_pos = symbol('x', i);
+%     key_vel = symbol('v', i);
+%     
+%     % initialize as straight line in conf space
+%     conf = start_conf * (total_time_step-i)/total_time_step + end_conf * i/total_time_step;
+%     pose = Pose2(start_pose.x() * (total_time_step-i)/total_time_step + ...
+%         end_pose.x() * i/total_time_step, ...
+%         start_pose.y() * (total_time_step-i)/total_time_step + ...
+%         end_pose.y() * i/total_time_step, ...
+%         start_pose.theta() * (total_time_step-i)/total_time_step + ...
+%         end_pose.theta() * i/total_time_step);
+%     vel = avg_vel;
+%     
+%     insertPose2VectorInValues(key_pos, Pose2Vector(pose, conf), init_values);
+%     init_values.insert(key_vel, vel);
+% end
 
-% test = ISAM2TrajOptimizer2DArm(robot, sdf, opt_setting);
+%% initialize STEAP / ISAM
+init_values = initPose2VectorTrajStraightLine(start_pose, start_conf, end_pose, end_conf, total_time_step);
+% batch_values = BatchTrajOptimizePose2MobileArm(arm_model, sdf, pstart, start_vel, pend, end_vel, init_values, opt_setting);
 
-%% initialize
-
-%init traj
-init_values = initPose2VectorTrajStraightLine(start_pose, zeros(3,1), end_pose, zeros(3,1), total_time_step);
-batch_values = BatchTrajOptimizePose2MobileArm(arm_model, sdf, start_conf, zeros(3,1), end_conf, zeros(3,1), init_values, opt_setting)
-
-marm_inc_inf = ISAM2TrajOptimizerPose2MobileArm(arm_model, sdf, opt_setting);
-marm_inc_inf.initFactorGraph(start_conf, zeros(3,1), end_conf, zeros(3,1));
+%%
+marm_inc_inf = ISAM2TrajOptimizerPose2MobileArm(arm_model, sdf, opt_setting); 
+marm_inc_inf.initFactorGraph(pstart, start_vel, pend, end_vel);
 marm_inc_inf.initValues(batch_values);
 marm_inc_inf.update();
 
-inc_inf_values = marm_inc_inf.values()
+inc_inf_values = marm_inc_inf.values();
  
-% %% STEAP
+%% STEAP
 % figure(4)
 % hold on
 % plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
@@ -162,6 +197,7 @@ inc_inf_values = marm_inc_inf.values()
 % plot_values = interpolatePose2Traj(inc_inf_values, Qc_model, delta_t, plot_inter, 0, total_time_step);
 % plot_trajectory(plot_values, total_plot_step, 'r');
 % 
+%% execute Trajectory
 % for i = 0 : total_time_step - 1
 %     key_pos = symbol('x', i+1);
 %     goal = inc_inf_values.atPose2(key_pos);
@@ -185,45 +221,12 @@ inc_inf_values = marm_inc_inf.values()
 %     %update factor graph to perform incremental inference
 %     plot(x_ist, y_ist, 'O g');
 %     
-%     pose_estimate = Pose2(x, y, t);
+%     pose_estimate = Pose2(x_ist, y_ist, t_ist);
 %     estimation_noise = noiseModel.Diagonal.Sigmas([0.1; 0.1; 15]);
 %     marm_inc_inf.addPoseEstimate(i + 1, pose_estimate, estimation_noise);
 %     marm_inc_inf.update();
 %     inc_inf_values = marm_inc_inf.values();
-% %     
-% %     %optimize again
-% %     parameters = LevenbergMarquardtParams;
-% %     parameters.setVerbosity('ERROR');
-% %     optimizer = LevenbergMarquardtOptimizer(graph, result, parameters);
-% %     optimizer.optimize();
-% %     result = optimizer.values();
-% %     
-% %     provide_trajectory(result);
 % end
-% 
-% %% plot final values
-% % plot_inter = check_inter;
-% % if plot_inter
-% %     total_plot_step = total_time_step * (plot_inter + 1);
-% %     plot_values = interpolatePose2Traj(result, Qc_model, delta_t, plot_inter, 0, total_time_step);
-% % else
-% %     total_plot_step = total_time_step;
-% %     plot_values = result;
-% % end
-% % 
-% % for i=0:total_plot_step
-% %     if i>0
-% %         p0_x = plot_values.atPose2(symbol('x', i)).x;
-% %         p0_y = plot_values.atPose2(symbol('x', i)).y
-% %         
-% %         p1_x = plot_values.atPose2(symbol('x', i-1)).x;
-% %         p1_y = plot_values.atPose2(symbol('x', i-1)).y;
-% %         
-% %         
-% %     %     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
-% %         plot([p0_x p1_x], [p0_y p1_y], 'g');
-% %     end
-% % end
 % 
 % %% FUNCTIONS
 % %ROS Trajectory Service
@@ -268,6 +271,3 @@ inc_inf_values = marm_inc_inf.values()
 %         end
 %     end
 % end
-% 
-% 
-% 
