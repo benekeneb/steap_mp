@@ -21,6 +21,18 @@ clear
 import gtsam.*
 import gpmp2.*
 
+%%ROS Config
+rosshutdown
+rosinit
+
+server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallback,...
+                      'DataFormat','struct');
+req = rosmessage(server);
+
+% Arrays that saves current trajectory
+global x_array
+global y_array
+
 
 %% Environment Map
 dataset = generate2Ddataset('MobileMap1');
@@ -30,17 +42,29 @@ cell_size = dataset.cell_size;
 
 %SDF-2D   >> its necessary due to Planar-sdf factors
 
-origin_point2 = Point2(dataset.origin_x, dataset.origin_y);
+dataset.origin_x = 0;
+dataset.origin_y = 0;
 
-% signed distance field
+origin_point2 = Point2(dataset.origin_x, dataset.origin_y);
+origin_point3 = Point3(dataset.origin_x, dataset.origin_y, 0);
+
+% sdf2D
 field2D = signedDistanceField2D(dataset.map, cell_size);
 sdf2D = PlanarSDF(origin_point2, cell_size, field2D);
+
+% sdf3D
+field3D = signedDistanceField3D(dataset.map, dataset.cell_size);
+sdf3D = SignedDistanceField(origin_point3, cell_size, size(field3D, 1), ...
+    size(field3D, 2), size(field3D, 3));
+for z = 1:size(field3D, 3)
+    sdf3D.initFieldData(z-1, field3D(:,:,z)');
+end
 
 %% Robot Model and settings parameters
     % Robot model parameters should be changed
 total_time_sec = 5.0;
-total_time_step = 50;
-total_check_step = 50;
+total_time_step = 25;
+total_check_step = 25;
 delta_t = total_time_sec / total_time_step;
 check_inter = total_check_step / total_time_step - 1;
 
@@ -71,12 +95,12 @@ pose_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
 vel_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
 
 % start and end conf
-start_pose = Pose2(-1, 0, pi/2);
+start_pose = Pose2(2, 2, pi/2);
 start_conf = [0, 0]';
 pstart = Pose2Vector(start_pose, start_conf);
 start_vel = [0, 0, 0, 0, 0]';
 
-end_pose = Pose2(1, 0, pi/2);
+end_pose = Pose2(8, 8, pi/2);
 end_conf = [0 0]';
 pend = Pose2Vector(end_pose, end_conf);
 end_vel = [0, 0, 0, 0, 0]';
@@ -201,6 +225,9 @@ batch_values = optimizer.values();
 
 
 %% The iSAM update w.r.t to the updated factor graph
+figure(4), hold on
+% plot world
+plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
 
 % Now perform the inference using iSAM update
 
@@ -254,16 +281,98 @@ marm_inc_inf.initFactorGraph(pstart, start_vel, pend, end_vel);
 marm_inc_inf.initValues(batch_values);
 marm_inc_inf.update();
 inc_inf_values = marm_inc_inf.values();
-%% plot batch values
-for i=0:total_time_step
-    figure(4), hold on
-    title('Initial Optimized Trajectory')
-    % plot world
-    plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
-    % plot arm
-    p = atPose2VectorValues(symbol('x', i), batch_values);
-    plotPlanarMobileArm(marm.fk_model(), p, [0.4 0.2], 'b', 1);
-    pause(pause_time), hold off
+
+plot_trajectory(inc_inf_values, total_time_step, 'b')
+
+
+%%Execute
+for i = 0 : total_time_step - 1
+    key_pos = symbol('x', i+1);
+    goal = atPose2VectorValues(key_pos, inc_inf_values).pose;
+    
+    plot_inter = check_inter; %interpolate to next time step
+    total_plot_step = total_time_step * (plot_inter + 1);
+    exec_values = interpolatePose2MobileArmTraj(inc_inf_values, Qc_model, delta_t, 5, i, i+1);
+    
+%{
+%     plot_trajectory(exec_values, total_plot_step, 'b');
+%     coll_cost = CollisionCostPose2MobileArm(marm, sdf3D, exec_values, opt_setting); %calculate collision cost
+%     if coll_cost ~= 0 && error_mode == 1
+%         error("At step %i, plan is not collision free (Collision Cost: %i)", i, coll_cost);
+%     end
+%}     
+    
+    %execute Trajectory --> Send it to ROS
+    provide_trajectory(exec_values, 6);
+    [x_ist, y_ist, t_ist] = send_goal(goal.x, goal.y, goal.theta);
+%     
+    %get current state and use if it was measured recently then
+    %update factor graph to perform incremental inference
+    plot(x_ist, y_ist, 'O g');
+    
+    estimation_pose = Pose2(x_ist, y_ist, t_ist);
+    estimation_config = [0, 0]';
+    estimation_vector = Pose2Vector(estimation_pose, estimation_config);
+    estimation_noise = noiseModel.Diagonal.Sigmas([0.1; 0.1; 15]);
+    marm_inc_inf.addPoseEstimate(i + 1, estimation_vector, pose_fix);
+    marm_inc_inf.update();
+    inc_inf_values = marm_inc_inf.values();
 end
+
+%% plot batch values
+% for i=0:total_time_step
+%     figure(4), hold on
+%     title('Initial Optimized Trajectory')
+%     % plot world
+%     plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+%     % plot arm
+%     p = atPose2VectorValues(symbol('x', i), batch_values);
+%     plotPlanarMobileArm(marm.fk_model(), p, [0.4 0.2], 'b', 1);
+%     pause(pause_time), hold off
+% end
 %% plot Final Results
 % plot the final results that gets updated according to iSAM results
+
+%% FUNCTIONS
+%ROS Trajectory Service
+function provide_trajectory(Values, steps)
+    global x_array;
+    global y_array;
+
+    [x_array, y_array] = values_to_array(Values, steps);
+end
+
+function resp = serviceCallback(~,req,resp)
+    global x_array;
+    global y_array;
+    resp.PathXArray(1) = x_array(1);
+    
+    i = 1;
+    while x_array(i) ~= 0 && y_array(i) ~= 0
+        resp.PathXArray(i) = x_array(i);
+        resp.PathYArray(i) = y_array(i);
+        i = i + 1;
+    end
+end
+
+%Other Functions
+function plot_trajectory(values, plot_step, color)
+    import gtsam.*;
+    import gpmp2.*;
+    for i = 0 : plot_step
+        if i>0
+            try
+                p0_x = atPose2VectorValues(symbol('x', i), values).pose.x();
+                p0_y = atPose2VectorValues(symbol('x', i), values).pose.y();
+
+                p1_x = atPose2VectorValues(symbol('x', i-1), values).pose.x();
+                p1_y = atPose2VectorValues(symbol('x', i-1), values).pose.y();
+
+            %     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+                plot([p0_x p1_x], [p0_y p1_y], color);
+            catch
+                break;
+            end
+        end
+    end
+end
