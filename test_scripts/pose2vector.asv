@@ -1,4 +1,0 @@
-import gtsam.*
-import gpmp2.*
-
-pose_estimate = Pose2Vector(Pose2(x_ist, y_ist, t_ist), Vector2(0.0, 0.0));

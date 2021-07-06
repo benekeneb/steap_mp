@@ -106,14 +106,14 @@ if debug == 0
 else
     x_ist = 2;
     y_ist = 2;
-    t_ist = 0;
+    t_ist = pi/2;
 end
 start_pose = Pose2(x_ist, y_ist, t_ist);
 start_conf = [0, 0]'; %angle values
 pstart = Pose2Vector(start_pose, start_conf);
 start_vel = [0, 0, 0, 0, 0]';
 
-end_pose = Pose2(7, 7, 0);
+end_pose = Pose2(7, 2, pi/2);
 end_conf = [0 0]';
 pend = Pose2Vector(end_pose, end_conf);
 end_vel = [0, 0, 0, 0, 0]';
@@ -301,22 +301,22 @@ plot_trajectory(inc_inf_values, total_time_step, 'b')
 
 %%Execute
 % for i = 0 : total_time_step - 1
-for i = 0 : total_time_step - 1
+for i = 0 : 1
     key_pos = symbol('x', i+1);
     goal = atPose2VectorValues(key_pos, inc_inf_values).pose;
-
+    
     plot_inter = check_inter; %interpolate to next time step
     total_plot_step = total_time_step * (plot_inter + 1);
     exec_values = interpolatePose2MobileArmTraj(inc_inf_values, Qc_model, delta_t, 5, i, i+1)
     
-    for j = i+1 : total_time_step
+    for j = i + 1 : total_time_step
         p0_x = atPose2VectorValues(symbol('x', j), inc_inf_values).pose.x;
         p0_y = atPose2VectorValues(symbol('x', j), inc_inf_values).pose.y;
 
         p1_x = atPose2VectorValues(symbol('x', j-1), inc_inf_values).pose.x;
         p1_y = atPose2VectorValues(symbol('x', j-1), inc_inf_values).pose.y;
 
-%         plotPlanarMobileBase(marm.fk_model(), goal, [0.4 0.2], 'b', 1);
+    %     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
         plot([p0_x p1_x], [p0_y p1_y], 'r');
     end
     
@@ -334,25 +334,24 @@ for i = 0 : total_time_step - 1
     plot(x_ist, y_ist, 'O g');
     plotPlanarMobileBase(marm.fk_model(), estimation_pose, [0.4 0.2], 'b', 1);
     
-    estimation_noise = eye(5) * 0.000001;
+    estimation_noise = eye(5);
     
     marm_inc_inf.addPoseEstimate(i, estimation_vector, estimation_noise);
     marm_inc_inf.update();
     inc_inf_values = marm_inc_inf.values();
-    pause(1)
 end
 
 % plot batch values
-% for i=0:total_time_step
-%     figure(4), hold on
-%     title('Initial Optimized Trajectory')
-%     % plot world
-%     plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
-%     % plot arm
-%     p = atPose2VectorValues(symbol('x', i), batch_values);
-%     plotPlanarMobileArm(marm.fk_model(), p, [0.4 0.2], 'b', 1);
-%     pause(pause_time), hold off
-% end
+for i=0:total_time_step
+    figure(4), hold on
+    title('Initial Optimized Trajectory')
+    % plot world
+    plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
+    % plot arm
+    p = atPose2VectorValues(symbol('x', i), batch_values);
+    plotPlanarMobileArm(marm.fk_model(), p, [0.4 0.2], 'b', 1);
+    pause(pause_time), hold off
+end
 %% plot Final Results
 % plot the final results that gets updated according to iSAM results
 

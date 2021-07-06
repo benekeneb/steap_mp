@@ -1,7 +1,7 @@
 rosshutdown;
 rosinit;
 
-server = rossvcserver('/test', 'carrot_planner/path', @serviceCallback,...
+server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallback,...
                       'DataFormat','struct');
 
 client = rossvcclient('/test','DataFormat','struct');
