@@ -13,8 +13,8 @@ server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallba
 req = rosmessage(server);
 
 % Arrays that saves current trajectory
-global x_array
-global y_array
+x_array = [0, 0, 0];
+y_array = [0, 0, 0];
 
 %% small dataset
 dataset = generate2Ddataset('MobileMap1');

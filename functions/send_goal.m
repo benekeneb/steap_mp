@@ -49,13 +49,15 @@ function [x_ist, y_ist, t_ist] = send_goal(pos_x, pos_y, euler, debug)
 
         fprintf("Goal Reached\n");
     else
-        x_noise = (rand - 0.5) * 2 * 0.01;
-        y_noise = (rand - 0.5) * 2 * 0.01;
-        t_noise = (rand - 0.5) * 2 * 0.01;
+        dist_max_noise = 0.15; %maximum noise in meter
+        theta_max_noise = pi/32;
+        x_noise = (rand - 0.5) * 2 * dist_max_noise;
+        y_noise = (rand - 0.5) * 2 * dist_max_noise;
+        t_noise = (rand - 0.5) * 2 * theta_max_noise;
         
-        x_ist = pos_x * (1 + x_noise);
-        y_ist = pos_y * (1 + y_noise);
-        t_ist = euler * (1 + t_noise);
+        x_ist = pos_x + x_noise;
+        y_ist = pos_y + y_noise;
+        t_ist = euler + t_noise;
     end
 end
    

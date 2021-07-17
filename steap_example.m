@@ -21,13 +21,13 @@ clear
 import gtsam.*
 import gpmp2.*
 
-%%ROS Config
-rosshutdown
-rosinit
-
 debug = 1;
 
 if debug == 0
+    %%ROS Config
+    rosshutdown
+    rosinit
+
     server = rossvcserver('/steap_plan', 'carrot_planner/path_array', @serviceCallback,...
                           'DataFormat','struct');
     req = rosmessage(server);
@@ -69,8 +69,8 @@ end
 %% Robot Model and settings parameters
     % Robot model parameters should be changed
 total_time_sec = 5.0;
-total_time_step = 25;
-total_check_step = 25;
+total_time_step = 50;
+total_check_step = 50;
 delta_t = total_time_sec / total_time_step;
 check_inter = total_check_step / total_time_step - 1;
 
@@ -113,7 +113,7 @@ start_conf = [0, 0]'; %angle values
 pstart = Pose2Vector(start_pose, start_conf);
 start_vel = [0, 0, 0, 0, 0]';
 
-end_pose = Pose2(7, 7, 0);
+end_pose = Pose2(7, 2, 0);
 end_conf = [0 0]';
 pend = Pose2Vector(end_pose, end_conf);
 end_vel = [0, 0, 0, 0, 0]';
@@ -182,8 +182,6 @@ for i = 0 : total_time_step
         key_vel2 = symbol('v', i);
         graph.add(GaussianProcessPriorPose2Vector(key_pos1, key_vel1, ...
             key_pos2, key_vel2, delta_t, Qc_model));
-        
-        
         
         % GP cost factor
         if use_GP_inter & check_inter > 0
@@ -301,13 +299,19 @@ plot_trajectory(inc_inf_values, total_time_step, 'b')
 
 %%Execute
 % for i = 0 : total_time_step - 1
+time_sum = 0;
+time_iter = 0; 
+
 for i = 0 : total_time_step - 1
-    key_pos = symbol('x', i+1);
+    tic
+    key_pos = symbol('x', i);
     goal = atPose2VectorValues(key_pos, inc_inf_values).pose;
 
     plot_inter = check_inter; %interpolate to next time step
     total_plot_step = total_time_step * (plot_inter + 1);
     exec_values = interpolatePose2MobileArmTraj(inc_inf_values, Qc_model, delta_t, 5, i, i+1)
+    
+    time_iter = toc;
     
     for j = i+1 : total_time_step
         p0_x = atPose2VectorValues(symbol('x', j), inc_inf_values).pose.x;
@@ -317,9 +321,10 @@ for i = 0 : total_time_step - 1
         p1_y = atPose2VectorValues(symbol('x', j-1), inc_inf_values).pose.y;
 
 %         plotPlanarMobileBase(marm.fk_model(), goal, [0.4 0.2], 'b', 1);
-        plot([p0_x p1_x], [p0_y p1_y], 'r');
+        line = plot([p0_x p1_x], [p0_y p1_y], color='r');
     end
     
+    tic
     %execute Trajectory --> Send it to ROS
     [x_ist, y_ist, t_ist] = send_goal(goal.x, goal.y, goal.theta, debug);
     provide_trajectory(exec_values, 6, debug);
@@ -339,8 +344,15 @@ for i = 0 : total_time_step - 1
     marm_inc_inf.addPoseEstimate(i, estimation_vector, estimation_noise);
     marm_inc_inf.update();
     inc_inf_values = marm_inc_inf.values();
-    pause(1)
+    
+    time_iter = time_iter + toc;
+    time_sum = time_sum + time_iter;
+%     pause(1)
+%     saveas(figure(4), strcat('animation/frame_' , int2str(i), '.png'));
 end
+
+time_avg = time_sum / total_time_step
+time_sum
 
 % plot batch values
 % for i=0:total_time_step
