@@ -97,7 +97,7 @@ cost_sigma = 0.01;
 epsilon_dist = 0.5;
 
 % prior to start/goal
-pose_fix = noiseModel.Isotropic.Sigma(5, 0.1);
+pose_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
 vel_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
 
 % start and end conf
@@ -175,29 +175,29 @@ for i = 0 : total_time_step
     end
     
     % GP priors and cost factor
-    if i > 0
-        key_pos1 = symbol('x', i-1);
-        key_pos2 = symbol('x', i);
-        key_vel1 = symbol('v', i-1);
-        key_vel2 = symbol('v', i);
-        graph.add(GaussianProcessPriorPose2Vector(key_pos1, key_vel1, ...
-            key_pos2, key_vel2, delta_t, Qc_model));
-        
-        % GP cost factor
-        if use_GP_inter & check_inter > 0
-            for j = 1:check_inter
-                tau = j * (total_time_sec / total_check_step);
-                graph.add(ObstaclePlanarSDFFactorGPPose2MobileArm( ...
-                    key_pos1, key_vel1, key_pos2, key_vel2, ...
-                    marm, sdf2D, cost_sigma, epsilon_dist, ...
-                    Qc_model, delta_t, tau));
-            end
-        end
-
-    end
-    if i > 1
-
-    end
+%     if i > 0
+%         key_pos1 = symbol('x', i-1);
+%         key_pos2 = symbol('x', i);
+%         key_vel1 = symbol('v', i-1);
+%         key_vel2 = symbol('v', i);
+%         graph.add(GaussianProcessPriorPose2Vector(key_pos1, key_vel1, ...
+%             key_pos2, key_vel2, delta_t, Qc_model));
+%         
+%         % GP cost factor
+%         if use_GP_inter & check_inter > 0
+%             for j = 1:check_inter
+%                 tau = j * (total_time_sec / total_check_step);
+%                 graph.add(ObstaclePlanarSDFFactorGPPose2MobileArm( ...
+%                     key_pos1, key_vel1, key_pos2, key_vel2, ...
+%                     marm, sdf2D, cost_sigma, epsilon_dist, ...
+%                     Qc_model, delta_t, tau));
+%             end
+%         end
+% 
+%     end
+%     if i > 1
+% 
+%     end
 end
 
 % plot initial values
@@ -300,8 +300,6 @@ for i = 0 : total_time_step - 1
     
     key_pos = symbol('x', i);
     goal = atPose2VectorValues(key_pos, batch_values).pose;
-    
-    factor = graph_lin.at(7)
     
     
 end
