@@ -69,13 +69,13 @@ end
 %% Robot Model and settings parameters
     % Robot model parameters should be changed
 total_time_sec = 5.0;
-total_time_step = 2;
-total_check_step = 2;
+total_time_step = 25;
+total_check_step = 25;
 delta_t = total_time_sec / total_time_step;
 check_inter = total_check_step / total_time_step - 1;
 
 % use 2d vehicle dynamics
-use_vehicle_dynamics = true;
+use_vehicle_dynamics = false;
 dynamics_sigma = 0.001;
 
 % use GP interpolation
@@ -113,7 +113,7 @@ start_conf = [0, 0]'; %angle values
 pstart = Pose2Vector(start_pose, start_conf);
 start_vel = [0, 0, 0, 0, 0]';
 
-end_pose = Pose2(7, 2, 0);
+end_pose = Pose2(7, 7, 0);
 end_conf = [0 0]';
 pend = Pose2Vector(end_pose, end_conf);
 end_vel = [0, 0, 0, 0, 0]';
@@ -170,8 +170,7 @@ for i = 0 : total_time_step
     
     % vehicle dynamics
     if use_vehicle_dynamics
-        graph.add(VehicleDynamicsFactorPose2Vector(key_pos, key_vel, ...
-            dynamics_sigma));
+        graph.add(VehicleDynamicsFactorPose2Vector(key_pos, key_vel, dynamics_sigma));
     end
     
     % GP priors and cost factor
@@ -180,23 +179,7 @@ for i = 0 : total_time_step
         key_pos2 = symbol('x', i);
         key_vel1 = symbol('v', i-1);
         key_vel2 = symbol('v', i);
-        graph.add(GaussianProcessPriorPose2Vector(key_pos1, key_vel1, ...
-            key_pos2, key_vel2, delta_t, Qc_model));
-        
-        % GP cost factor
-        if use_GP_inter & check_inter > 0
-            for j = 1:check_inter
-                tau = j * (total_time_sec / total_check_step);
-                graph.add(ObstaclePlanarSDFFactorGPPose2MobileArm( ...
-                    key_pos1, key_vel1, key_pos2, key_vel2, ...
-                    marm, sdf2D, cost_sigma, epsilon_dist, ...
-                    Qc_model, delta_t, tau));
-            end
-        end
-
-    end
-    if i > 1
-
+        graph.add(GaussianProcessPriorPose2Vector(key_pos1, key_vel1, key_pos2, key_vel2, delta_t, Qc_model));
     end
 end
 
@@ -253,64 +236,183 @@ opt_setting.set_conf_prior_model(pose_fix_sigma);
 opt_setting.set_vel_prior_model(vel_fix_sigma);
 opt_setting.set_Qc_model(Qc);
 
-%{ 
-Note that the same above mentioned batch optimization can also be done using the following commands
-%}
-%init_values = initPose2VectorTrajStraightLine(start_pose, start_conf, end_pose, end_conf, total_time_step);
-%batch_values = BatchTrajOptimizePose2MobileArm2D(marm, sdf2D, pstart, start_vel, pend, end_vel, init_values, opt_setting);
-    
-
-%{ 
- We also need to have a Bayes tree from the factor graph before update. For
- this purpose we would be using the following class and associated methods
--------Constructors-------
-ISAM2TrajOptimizerPose2MobileArm2D(Pose2MobileArmModel marm, PlanarSDF sdf, TrajOptimizerSetting setting)
-
--------Methods-------
-addPoseEstimate(size_t state_idx, Pose2Vector pose, Matrix pose_cov) : returns void
-addStateEstimate(size_t state_idx, Pose2Vector pose, Matrix pose_cov, Vector vel, Matrix vel_cov) : returns void
-changeGoalConfigAndVel(Pose2Vector goal_conf, Vector goal_vel) : returns void
-fixConfigAndVel(size_t state_idx, Pose2Vector conf_fix, Vector vel_fix) : returns void
-initFactorGraph(Pose2Vector start_conf, Vector start_vel, Pose2Vector goal_conf, Vector goal_vel) : returns void
-initValues(Values init_values) : returns void
-removeGoalConfigAndVel() : returns void
-update() : returns void
-values() : returns gtsam::Values
-%}
-
-%initialize the class for Isam
-
-%after execution to first timestep
-% Here the state estimation should be added by using the method as
-    %addStateEstimate(size_t state_idx, Pose2Vector pose, Matrix pose_cov, Vector vel, Matrix vel_cov) : returns void
-% Note: the values will come from ROS for the real time state estimation
-
-% Update iSAM & get output
-
 plot_trajectory(batch_values, total_time_step, 'b')
 
 
-%%Execute
+%%STEAP
 % for i = 0 : total_time_step - 1
 time_sum = 0;
 time_iter = 0; 
 
-for i = 0 : total_time_step - 1
-    graph_lin = graph.linearize(batch_values);
+optimized_values = Values;
+for i = 1 : total_time_step
+    key_pos_0 = symbol('x', i);
+    key_vel_0 = symbol('x', i);
+    x_0 = atPose2VectorValues(key_pos_0, batch_values);
     
-    key_pos = symbol('x', i);
-    goal = atPose2VectorValues(key_pos, batch_values).pose;
+    if i == 1 || i == total_time_step %skip if iteration is start or goal
+        insertPose2VectorInValues(key_pos_0, atPose2VectorValues(key_pos_0, init_values), optimized_values);
+        continue
+    end
     
-    factor = graph_lin.at(7)
+    if i > 2
+        key_pos_m2 = symbol('x', i-2);
+        key_vel_m2 = symbol('x', i-2);
+        x_m2 = atPose2VectorValues(key_pos_m2, optimized_values);
+    end
+    if i > 1
+        key_pos_m1 = symbol('x', i-1);
+        key_vel_m1 = symbol('x', i-1);
+        x_m1 = atPose2VectorValues(key_pos_m1, optimized_values);
+    end
+
+    if i < total_time_step - 1
+        key_pos_1 = symbol('x', i+1);
+        key_vel_1 = symbol('x', i+1);
+        x_1 = atPose2VectorValues(key_pos_1, batch_values);
+    end
+    if total_time_step - 2
+        key_pos_2 = symbol('x', i+2);
+        key_vel_2 = symbol('x', i+2);
+        x_2 = atPose2VectorValues(key_pos_2, batch_values);
+    end
+    
+    % EXECUTE TRAJECTORY TO VARAIBLE i
+    goal = x_m1.pose;
+    [x_ist, y_ist, t_ist] = send_goal(goal.x, goal.y, goal.theta, debug);
+    
+    % GET POSE ESTIMATE
+    estimation_pose = Pose2(x_ist, y_ist, t_ist);
+    estimation_config = [0, 0]';
+    estimation_vector = Pose2Vector(estimation_pose, estimation_config);
+    
+    plot(x_ist, y_ist, 'O g');
+    plotPlanarMobileBase(marm.fk_model(), estimation_pose, [0.4 0.2], 'b', 1);
+    
+    % ADD MEASUREMENT FACTOR
+    graph.add(PriorFactorPose2Vector(m_key_pos_1, estimation_vector, pose_fix));
     
     
+    %PERFORM MESSAGE PASSING
+    
+    %CALCULATE MESSAGE F_GP1 TO X0
+    m_graph = NonlinearFactorGraph;
+    m_key_pos_0 = symbol('x', 0);
+    m_key_pos_1 = symbol('x', 1);
+    m_key_pos_2 = symbol('x', 2);
+    m_key_vel_0 = symbol('v', 0);
+    m_key_vel_1 = symbol('v', 1);
+    m_key_vel_2 = symbol('v', 2);
+    
+    m_init_values = Values;
+    insertPose2VectorInValues(m_key_pos_0, x_0, m_init_values);
+    insertPose2VectorInValues(m_key_pos_1, x_1, m_init_values);
+    insertPose2VectorInValues(m_key_pos_2, x_2, m_init_values);
+    m_init_values.insert(m_key_vel_0, zeros(4,1));
+    m_init_values.insert(m_key_vel_1, zeros(4,1));
+    m_init_values.insert(m_key_vel_2, zeros(4,1));
+    
+    m_graph.add(GaussianProcessPriorPose2Vector(m_key_pos_0, m_key_vel_0, m_key_pos_1, m_key_vel_1, delta_t, Qc_model));
+    m_graph.add(GaussianProcessPriorPose2Vector(m_key_pos_1, m_key_vel_1, m_key_pos_2, m_key_vel_2, delta_t, Qc_model));
+    m_graph.add(PriorFactorPose2Vector(m_key_pos_1, estimation_vector, pose_fix));
+    m_graph.add(ObstaclePlanarSDFFactorPose2MobileArm(m_key_pos_1, marm, sdf2D, cost_sigma, epsilon_dist));
+    
+    m_graph_lin = m_graph.linearize(m_init_values)
+    
+    f_gp1 = m_graph_lin.at(0)
+    f_gp2 = m_graph_lin.at(1)
+    f_m1 =  m_graph_lin.at(2)
+    f_o1 =  m_graph_lin.at(3)
+    
+    f_gp1_A = f_gp1.getA;
+    f_gp1_A1 = f_gp1_A(:, [1,2,3,4,5]);
+    f_gp1_A2 = f_gp1_A(:, [11,12,13,14,15]);
+    f_gp1_b = f_gp1.getb;
+    
+    f_gp2_A = f_gp2.getA;
+    f_gp2_A1 = f_gp2_A(:, [1,2,3,4,5]);
+    f_gp2_A2 = f_gp2_A(:, [11,12,13,14,15]);
+    f_gp2_b = f_gp2.getb;
+    
+    f_m1_A = f_m1.getA;
+    f_m1_b = f_m1.getb;
+    f_o1_A = f_o1.getA;
+    f_o1_b = f_o1.getb;
+    
+    x_0_x = x_0.pose.x;
+    x_0_y = x_0.pose.y;
+    x_0_t = x_0.pose.theta;
+    x_0_conf = x_0.configuration;
+    x_0_c1 = x_0_conf(1);
+    x_0_c2 = x_0_conf(2);
+    x_0_array = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2]
+    
+    x_2_x = x_2.pose.x;
+    x_2_y = x_2.pose.y;
+    x_2_t = x_2.pose.theta;
+    x_2_conf = x_2.configuration;
+    x_2_c1 = x_2_conf(1);
+    x_2_c2 = x_2_conf(2);
+    x_2_array = [x_2_x x_2_y x_2_t x_2_c1 x_2_c2]
+    
+    m_gp1_x0_min = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp1_b)^2 + ...
+                        0.5 * norm(f_gp2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
+                        0.5 * norm(f_o1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_o1_b)^2 + ...
+                        0.5 * norm(f_m1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_m1_b)^2);
+    
+    x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 0 0 0 0 0];
+    A = [];
+    b = [];
+
+    Aeq = [];
+    beq = [];
+
+    lb = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 -inf -inf -inf -inf -inf];
+    ub = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 inf inf inf inf inf];
+    m_graph_solution = fmincon(m_gp1_x0_min,x0,A,b ,Aeq,beq,lb,ub)
+    x_1_array = m_graph_solution([6, 7, 8, 9, 10])
+    
+    m_gp1_x0 = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose(x_1_array) - f_gp1_b)^2 + ...
+                    0.5 * norm(f_gp2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
+                    0.5 * norm(f_o1_A * transpose(x_1_array) - f_o1_b)^2 + ...
+                    0.5 * norm(f_m1_A * transpose(x_1_array) - f_m1_b)^2);
+                
+%     m_gp0_x0 = @(x)
+                
+    % CALCULATE BELIEF
+    get_cost_factor(10) 
+                
+
+    
+    
+%     parameters = LevenbergMarquardtParams;
+%     parameters.setVerbosity('ERROR');
+%     optimizer = LevenbergMarquardtOptimizer(m_graph, m_init_values, parameters);
+%     optimizer.optimize(); %needs only to be optimized with respect to 
+%     
+    
+    
+    
+    
+    
+    if i == 2
+        break;
+    end
 end
 
-time_avg = time_sum / total_time_step
-time_sum
+
+time_avg = time_sum / total_time_step;
+time_sum;
 
 
 %% FUNCTIONS
+function factor = get_cost_factor(variable)
+    global graph;
+    
+    factor = graph.at((variable - 1) * 2 + 2 + 1)
+end
+
+
 %ROS Trajectory Service
 function provide_trajectory(Values, steps, debug)
     if debug == 0

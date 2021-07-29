@@ -21,10 +21,13 @@ b = [1 1 0]
 
 fun = @(x) 0.5* norm(A * transpose([x(1) x(2) x(3)]) - transpose(b))^2;
 
-x0 = [1, 1, 1];
+x0 = [2, 10, 0];
 A = [];
 b = [];
 
-lb = [10, 10, 0];
-ub = [10, 10];
-x = fmincon(fun,x0,A,b)
+Aeq = [];
+beq = [];
+
+lb = [10, -inf, 10];
+ub = [10, inf, 10];
+x = fmincon(fun,x0,A,b ,Aeq,beq,lb,ub)
