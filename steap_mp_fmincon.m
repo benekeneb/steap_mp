@@ -69,8 +69,8 @@ end
 %% Robot Model and settings parameters
     % Robot model parameters should be changed
 total_time_sec = 5.0;
-total_time_step = 25;
-total_check_step = 25;
+total_time_step = 10;
+total_check_step = 10;
 delta_t = total_time_sec / total_time_step;
 check_inter = total_check_step / total_time_step - 1;
 
@@ -249,7 +249,7 @@ time_iter = 0;
 
 optimized_values = Values;
 global graph_lin;
-for i = 1 : total_time_step
+for i = 1 : total_time_step - 3
     key_pos_0 = symbol('x', i);
     key_vel_0 = symbol('x', i);
     x_0 = atPose2VectorValues(key_pos_0, batch_values);
@@ -263,147 +263,178 @@ for i = 1 : total_time_step
     x_0_array = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2]
     
     if i == 1 || i == total_time_step %skip if iteration is start or goal
-        insertPose2VectorInValues(key_pos_0, atPose2VectorValues(key_pos_0, init_values), optimized_values);
-        continue
-    end
-    
-    if i > 2
-        key_pos_m2 = symbol('x', i-2);
-        key_vel_m2 = symbol('x', i-2);
-        x_m2 = atPose2VectorValues(key_pos_m2, optimized_values);
-        
-        x_m2_x = x_m2.pose.x;
-        x_m2_y = x_m2.pose.y;
-        x_m2_t = x_m2.pose.theta;
-        x_m2_conf = x_m2.configuration;
-        x_m2_c1 = x_m2_conf(1);
-        x_m2_c2 = x_m2_conf(2);
-        x_m2_array = [x_m2_x x_m2_y x_m2_t x_m2_c1 x_m2_c2]
-    end
-    if i > 1
-        key_pos_m1 = symbol('x', i-1);
-        key_vel_m1 = symbol('x', i-1);
-        x_m1 = atPose2VectorValues(key_pos_m1, optimized_values);
-        
-        x_m1_x = x_m1.pose.x;
-        x_m1_y = x_m1.pose.y;
-        x_m1_t = x_m1.pose.theta;
-        x_m1_conf = x_m1.configuration;
-        x_m1_c1 = x_m1_conf(1);
-        x_m1_c2 = x_m1_conf(2);
-        x_m1_array = [x_m1_x x_m1_y x_m1_t x_m1_c1 x_m1_c2]
-    end
+        x_0_solution_pose = Pose2(x_0_x, x_0_y, x_0_t);
+        x_0_solution_config = [x_0_c1, x_0_c2]';
+        x_0_solution_vector = Pose2Vector(x_0_solution_pose, x_0_solution_config);
+        x_solution_vector = atPose2VectorValues(key_pos_0, init_values);
+    else
+        if i > 2
+            key_pos_m2 = symbol('x', i-2);
+            key_vel_m2 = symbol('x', i-2);
+            x_m2 = atPose2VectorValues(key_pos_m2, optimized_values);
 
-    if i < total_time_step - 1
-        key_pos_1 = symbol('x', i+1);
-        key_vel_1 = symbol('x', i+1);
-        x_1 = atPose2VectorValues(key_pos_1, batch_values);
+            x_m2_x = x_m2.pose.x;
+            x_m2_y = x_m2.pose.y;
+            x_m2_t = x_m2.pose.theta;
+            x_m2_conf = x_m2.configuration;
+            x_m2_c1 = x_m2_conf(1);
+            x_m2_c2 = x_m2_conf(2);
+            x_m2_array = [x_m2_x x_m2_y x_m2_t x_m2_c1 x_m2_c2]
+        end
+        if i > 1
+            key_pos_m1 = symbol('x', i-1);
+            key_vel_m1 = symbol('x', i-1);
+            x_m1 = atPose2VectorValues(key_pos_m1, optimized_values);
+
+            x_m1_x = x_m1.pose.x;
+            x_m1_y = x_m1.pose.y;
+            x_m1_t = x_m1.pose.theta;
+            x_m1_conf = x_m1.configuration;
+            x_m1_c1 = x_m1_conf(1);
+            x_m1_c2 = x_m1_conf(2);
+            x_m1_array = [x_m1_x x_m1_y x_m1_t x_m1_c1 x_m1_c2]
+        end
+
+        if i < total_time_step - 1
+            key_pos_1 = symbol('x', i+1);
+            key_vel_1 = symbol('x', i+1);
+            x_1 = atPose2VectorValues(key_pos_1, batch_values);
+        end
+        if total_time_step - 2
+            key_pos_2 = symbol('x', i+2);
+            key_vel_2 = symbol('x', i+2);
+            x_2 = atPose2VectorValues(key_pos_2, batch_values);
+
+            x_2_x = x_2.pose.x;
+            x_2_y = x_2.pose.y;
+            x_2_t = x_2.pose.theta;
+            x_2_conf = x_2.configuration;
+            x_2_c1 = x_2_conf(1);
+            x_2_c2 = x_2_conf(2);
+            x_2_array = [x_2_x x_2_y x_2_t x_2_c1 x_2_c2]
+        end
+
+        % EXECUTE TRAJECTORY TO VARAIBLE i
+        goal = x_m1.pose;
+        [x_ist, y_ist, t_ist] = send_goal(goal.x, goal.y, goal.theta, debug);
+
+        % GET POSE ESTIMATE
+        estimation_pose = Pose2(x_ist, y_ist, t_ist);
+        estimation_config = [0, 0]';
+        estimation_vector = Pose2Vector(estimation_pose, estimation_config);
+
+        plot(x_ist, y_ist, 'O g');
+    %     plotPlanarMobileBase(marm.fk_model(), estimation_pose, [0.4 0.2], 'b', 1);
+
+        % ADD MEASUREMENT FACTOR
+        graph.add(PriorFactorPose2Vector(key_pos_m1, estimation_vector, pose_fix));
+
+        %LINEARIZE GRAPH
+        graph_lin = graph.linearize(batch_values);
+
+        %PERFORM MESSAGE PASSING
+        %GET LINEARIZED FACTORS
+        f_gpm1 = get_gp_factor(i-1);
+        f_gp0 = get_gp_factor(i);
+        f_gp1 = get_gp_factor(i+1);
+        f_gp2 = get_gp_factor(i+2);
+
+        f_o0 =  get_obs_factor(i);
+        f_om1 =  get_obs_factor(i-1);
+        f_o1 =  get_obs_factor(i);
+
+        f_mm1 = get_meas_factor(i-1)
+
+        %retrieve A matrices & b vectors
+        f_gpm1_A = f_gpm1.getA;
+        f_gpm1_A1 = f_gpm1_A(:, [1,2,3,4,5]);
+        f_gpm1_A2 = f_gpm1_A(:, [11,12,13,14,15]);
+        f_gpm1_b = f_gpm1.getb;
+
+        f_gp0_A = f_gp0.getA;
+        f_gp0_A1 = f_gp0_A(:, [1,2,3,4,5]);
+        f_gp0_A2 = f_gp0_A(:, [11,12,13,14,15]);
+        f_gp0_b = f_gp0.getb;
+
+        f_gp1_A = f_gp1.getA;
+        f_gp1_A1 = f_gp1_A(:, [1,2,3,4,5]);
+        f_gp1_A2 = f_gp1_A(:, [11,12,13,14,15]);
+        f_gp1_b = f_gp1.getb;
+
+        f_gp2_A = f_gp2.getA;
+        f_gp2_A1 = f_gp2_A(:, [1,2,3,4,5]);
+        f_gp2_A2 = f_gp2_A(:, [11,12,13,14,15]);
+        f_gp2_b = f_gp2.getb;
+
+        f_om1_A =  f_om1.getA;
+        f_om1_b =  f_om1.getb;
+
+        f_o0_A = f_o0.getA;
+        f_o0_b = f_o0.getb;
+
+        f_o1_A = f_o1.getA;
+        f_o1_b = f_o1.getb;
+
+        f_mm1_A = f_mm1.getA;
+        f_mm1_b = f_mm1.getb;
+
+        %CALCULATE MESSAGES
+        %GP1 to x0
+        m_gp1_x0_min = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp1_b)^2 + ...
+                            0.5 * norm(f_gp2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
+                            0.5 * norm(f_o1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_o1_b)^2);
+        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 0 0 0 0 0];
+        A = [];
+        b = [];
+        Aeq = [];
+        beq = [];
+
+        lb = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 -inf -inf -inf -inf -inf];
+        ub = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 inf inf inf inf inf];
+
+        m_graph_solution = fmincon(m_gp1_x0_min,x0,A,b ,Aeq,beq,lb,ub)
+        x_1_array = m_graph_solution([6, 7, 8, 9, 10])
+
+        m_gp1_x0 = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose(x_1_array) - f_gp1_b)^2 + ...
+                        0.5 * norm(f_gp2_A1 * transpose(x_1_array) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
+                        0.5 * norm(f_o1_A * transpose(x_1_array) - f_o1_b)^2); 
+
+
+        %GP0 to x0
+        if i > 2 % if first 
+            m_gp0_x0 = @(x) (0.5 * norm(f_gp0_A1 * transpose(x_m1_array) + f_gp0_A2 * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_gp0_b)^2 + ...
+                            0.5 * norm(f_gpm1_A1 * transpose(x_m1_array) + f_gpm1_A2 * transpose(x_m2_array) - f_gpm1_b)^2 + ...
+                            0.5 * norm(f_om1_A * transpose(x_m1_array) - f_om1_b)^2 + ...
+                            0.5 * norm(f_mm1_A * transpose(x_m1_array) - f_mm1_b)^2); 
+        else 
+            m_gp0_x0 = @(x) (0.5 * norm(f_gp0_A1 * transpose(x_m1_array) + f_gp0_A2 * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_gp0_b)^2 + ...
+                            0.5 * norm(f_om1_A * transpose(x_m1_array) - f_om1_b)^2 + ...
+                            0.5 * norm(f_mm1_A * transpose(x_m1_array) - f_mm1_b)^2); 
+        end
+
+        %o0 to x0
+        m_o0_to_x0 = @(x) 0.5 * norm(f_o0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_o0_b)^2;
+
+        % CALCULATE BELIEF
+        belief = @(x) m_gp0_x0([x(1) x(2) x(3) x(4) x(5)]) + m_gp1_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_to_x0([x(1) x(2) x(3) x(4) x(5)]);
+        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 ];
+        A = [];
+        b = [];
+        Aeq = [];
+        beq = [];
+
+        lb = [0 0 0 0 0];
+        ub = [10 10 10 10 10];
+
+        x_0_solution = fmincon(belief,x0,A,b ,Aeq,beq,lb,ub)     
+        x_0_solution_pose = Pose2(x_0_solution(1), x_0_solution(2), x_0_solution(3));
+        x_0_solution_config = [x_0_solution(4), x_0_solution(5)]';
+        x_0_solution_vector = Pose2Vector(x_0_solution_pose, x_0_solution_config);
     end
-    if total_time_step - 2
-        key_pos_2 = symbol('x', i+2);
-        key_vel_2 = symbol('x', i+2);
-        x_2 = atPose2VectorValues(key_pos_2, batch_values);
-        
-        x_2_x = x_2.pose.x;
-        x_2_y = x_2.pose.y;
-        x_2_t = x_2.pose.theta;
-        x_2_conf = x_2.configuration;
-        x_2_c1 = x_2_conf(1);
-        x_2_c2 = x_2_conf(2);
-        x_2_array = [x_2_x x_2_y x_2_t x_2_c1 x_2_c2]
-    end
     
-    % EXECUTE TRAJECTORY TO VARAIBLE i
-    goal = x_m1.pose;
-    [x_ist, y_ist, t_ist] = send_goal(goal.x, goal.y, goal.theta, debug);
+    plotPlanarMobileBase(marm.fk_model(), x_0_solution_pose, [0.4 0.2], 'b', 1);
     
-    % GET POSE ESTIMATE
-    estimation_pose = Pose2(x_ist, y_ist, t_ist);
-    estimation_config = [0, 0]';
-    estimation_vector = Pose2Vector(estimation_pose, estimation_config);
-    
-    plot(x_ist, y_ist, 'O g');
-    plotPlanarMobileBase(marm.fk_model(), estimation_pose, [0.4 0.2], 'b', 1);
-    
-    % ADD MEASUREMENT FACTOR
-    graph.add(PriorFactorPose2Vector(key_pos_m1, estimation_vector, pose_fix));
-    
-    %LINEARIZE GRAPH
-    graph_lin = graph.linearize(batch_values);
-    
-    %PERFORM MESSAGE PASSING
-    %GET LINEARIZED FACTORS
-    f_gpm1 = get_gp_factor(i-1);
-    f_gp0 = get_gp_factor(i);
-    f_gp1 = get_gp_factor(i+1);
-    f_gp2 = get_gp_factor(i+2);
-    
-    f_om1 =  get_obs_factor(i-1);
-    f_o1 =  get_obs_factor(i);
-    
-    f_mm1 = get_meas_factor(i-1)
-    
-    %retrieve A matrices & b vectors
-    f_gpm1_A = f_gpm1.getA;
-    f_gpm1_A1 = f_gpm1_A(:, [1,2,3,4,5]);
-    f_gpm1_A2 = f_gpm1_A(:, [11,12,13,14,15]);
-    f_gpm1_b = f_gpm1.getb;
-   
-    f_gp0_A = f_gp0.getA;
-    f_gp0_A1 = f_gp0_A(:, [1,2,3,4,5]);
-    f_gp0_A2 = f_gp0_A(:, [11,12,13,14,15]);
-    f_gp0_b = f_gp0.getb;
-    
-    f_gp1_A = f_gp1.getA;
-    f_gp1_A1 = f_gp1_A(:, [1,2,3,4,5]);
-    f_gp1_A2 = f_gp1_A(:, [11,12,13,14,15]);
-    f_gp1_b = f_gp1.getb;
-
-    f_gp2_A = f_gp2.getA;
-    f_gp2_A1 = f_gp2_A(:, [1,2,3,4,5]);
-    f_gp2_A2 = f_gp2_A(:, [11,12,13,14,15]);
-    f_gp2_b = f_gp2.getb;
-    
-    f_om1_A =  f_om1.getA;
-    f_om1_b =  f_om1.getb;
-    
-    f_o1_A = f_o1.getA;
-    f_o1_b = f_o1.getb;
-    
-    f_mm1_A = f_mm1.getA;
-    f_mm1_b = f_mm1.getb;
-    
-    %CALCULATE MESSAGES
-    %GP1 to x0
-    m_gp1_x0_min = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp1_b)^2 + ...
-                        0.5 * norm(f_gp2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
-                        0.5 * norm(f_o1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_o1_b)^2);
-    x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 0 0 0 0 0];
-    A = [];
-    b = [];
-    Aeq = [];
-    beq = [];
-
-    lb = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 -inf -inf -inf -inf -inf];
-    ub = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 inf inf inf inf inf];
-    m_graph_solution = fmincon(m_gp1_x0_min,x0,A,b ,Aeq,beq,lb,ub)
-    x_1_array = m_graph_solution([6, 7, 8, 9, 10])
-    
-    m_gp1_x0 = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose(x_1_array) - f_gp1_b)^2 + ...
-                    0.5 * norm(f_gp2_A1 * transpose(x_1_array) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
-                    0.5 * norm(f_o1_A * transpose(x_1_array) - f_o1_b)^2); 
-                
-    
-    %GP0 to x0
-    if i > 2
-    m_gp0_x0 = @(x) (0.5 * norm(f_gp0_A1 * transpose(x_m1_array) + f_gp0_A2 * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_gp0_b)^2 + ...
-                    0.5 * norm(f_gpm1_A1 * transpose(x_m1_array) + f_gpm1_A2 * transpose(x_m2_array) - f_gpm1_b)^2 + ...
-                    0.5 * norm(f_om1_A * transpose(x_m1_array) - f_om1_b)^2 + ...
-                    0.5 * norm(f_mm1_A * transpose(x_m1_array) - f_mm1_b)^2); 
-                
-    % CALCULATE BELIEF
-                
-
+    insertPose2VectorInValues(key_pos_0, x_0_solution_vector, optimized_values);
     
     
 %     parameters = LevenbergMarquardtParams;
@@ -416,9 +447,9 @@ for i = 1 : total_time_step
     
     
     
-    if i == 2
-        break;
-    end
+%     if i == 10
+%         break;
+%     end
 end
 
 

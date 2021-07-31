@@ -332,89 +332,31 @@ for i = 1 : total_time_step
     graph_lin = graph.linearize(batch_values);
     
     %PERFORM MESSAGE PASSING
-    %GET LINEARIZED FACTORS
-    f_gpm1 = get_gp_factor(i-1);
-    f_gp0 = get_gp_factor(i);
-    f_gp1 = get_gp_factor(i+1);
-    f_gp2 = get_gp_factor(i+2);
+    m_graph = NonlinearFactorGraph;
+    m_key_pos_0 = symbol('x', 0);
+    m_key_pos_1 = symbol('x', 1);
+    m_key_pos_2 = symbol('x', 2);
+    m_key_vel_0 = symbol('v', 0);
+    m_key_vel_1 = symbol('v', 1);
+    m_key_vel_2 = symbol('v', 2);
     
-    f_om1 =  get_obs_factor(i-1);
-    f_o1 =  get_obs_factor(i);
+    m_init_values = Values;
+    insertPose2VectorInValues(m_key_pos_0, x_0, m_init_values);
+    insertPose2VectorInValues(m_key_pos_1, x_1, m_init_values);
+    insertPose2VectorInValues(m_key_pos_2, x_2, m_init_values);
+    m_init_values.insert(m_key_vel_0, zeros(4,1));
+    m_init_values.insert(m_key_vel_1, zeros(4,1));
+    m_init_values.insert(m_key_vel_2, zeros(4,1));
     
-    f_mm1 = get_meas_factor(i-1)
+    m_graph.add(GaussianProcessPriorPose2Vector(m_key_pos_0, m_key_vel_0, m_key_pos_1, m_key_vel_1, delta_t, Qc_model));
+    m_graph.add(GaussianProcessPriorPose2Vector(m_key_pos_1, m_key_vel_1, m_key_pos_2, m_key_vel_2, delta_t, Qc_model));
+    m_graph.add(PriorFactorPose2Vector(m_key_pos_1, estimation_vector, pose_fix));
+    m_graph.add(ObstaclePlanarSDFFactorPose2MobileArm(m_key_pos_1, marm, sdf2D, cost_sigma, epsilon_dist));
     
-    %retrieve A matrices & b vectors
-    f_gpm1_A = f_gpm1.getA;
-    f_gpm1_A1 = f_gpm1_A(:, [1,2,3,4,5]);
-    f_gpm1_A2 = f_gpm1_A(:, [11,12,13,14,15]);
-    f_gpm1_b = f_gpm1.getb;
-   
-    f_gp0_A = f_gp0.getA;
-    f_gp0_A1 = f_gp0_A(:, [1,2,3,4,5]);
-    f_gp0_A2 = f_gp0_A(:, [11,12,13,14,15]);
-    f_gp0_b = f_gp0.getb;
-    
-    f_gp1_A = f_gp1.getA;
-    f_gp1_A1 = f_gp1_A(:, [1,2,3,4,5]);
-    f_gp1_A2 = f_gp1_A(:, [11,12,13,14,15]);
-    f_gp1_b = f_gp1.getb;
-
-    f_gp2_A = f_gp2.getA;
-    f_gp2_A1 = f_gp2_A(:, [1,2,3,4,5]);
-    f_gp2_A2 = f_gp2_A(:, [11,12,13,14,15]);
-    f_gp2_b = f_gp2.getb;
-    
-    f_om1_A =  f_om1.getA;
-    f_om1_b =  f_om1.getb;
-    
-    f_o1_A = f_o1.getA;
-    f_o1_b = f_o1.getb;
-    
-    f_mm1_A = f_mm1.getA;
-    f_mm1_b = f_mm1.getb;
-    
-    %CALCULATE MESSAGES
-    %GP1 to x0
-    m_gp1_x0_min = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp1_b)^2 + ...
-                        0.5 * norm(f_gp2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
-                        0.5 * norm(f_o1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_o1_b)^2);
-    x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 0 0 0 0 0];
-    A = [];
-    b = [];
-    Aeq = [];
-    beq = [];
-
-    lb = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 -inf -inf -inf -inf -inf];
-    ub = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 inf inf inf inf inf];
-    m_graph_solution = fmincon(m_gp1_x0_min,x0,A,b ,Aeq,beq,lb,ub)
-    x_1_array = m_graph_solution([6, 7, 8, 9, 10])
-    
-    m_gp1_x0 = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose(x_1_array) - f_gp1_b)^2 + ...
-                    0.5 * norm(f_gp2_A1 * transpose(x_1_array) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
-                    0.5 * norm(f_o1_A * transpose(x_1_array) - f_o1_b)^2); 
-                
-    
-    %GP0 to x0
-    if i > 2
-    m_gp0_x0 = @(x) (0.5 * norm(f_gp0_A1 * transpose(x_m1_array) + f_gp0_A2 * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_gp0_b)^2 + ...
-                    0.5 * norm(f_gpm1_A1 * transpose(x_m1_array) + f_gpm1_A2 * transpose(x_m2_array) - f_gpm1_b)^2 + ...
-                    0.5 * norm(f_om1_A * transpose(x_m1_array) - f_om1_b)^2 + ...
-                    0.5 * norm(f_mm1_A * transpose(x_m1_array) - f_mm1_b)^2); 
-                
-    % CALCULATE BELIEF
-                
-
-    
-    
-%     parameters = LevenbergMarquardtParams;
-%     parameters.setVerbosity('ERROR');
-%     optimizer = LevenbergMarquardtOptimizer(m_graph, m_init_values, parameters);
-%     optimizer.optimize(); %needs only to be optimized with respect to 
-%     
-    
-    
-    
-    
+    parameters = LevenbergMarquardtParams;
+    parameters.setVerbosity('ERROR');
+    optimizer = LevenbergMarquardtOptimizer(m_graph, m_init_values, parameters);
+    optimizer.optimize(); %needs only to be optimized with respect to 
     
     if i == 2
         break;
