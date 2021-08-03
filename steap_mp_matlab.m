@@ -69,8 +69,8 @@ end
 %% Robot Model and settings parameters
     % Robot model parameters should be changed
 total_time_sec = 5.0;
-total_time_step = 10;
-total_check_step = 10;
+total_time_step = 25;
+total_check_step = 25;
 delta_t = total_time_sec / total_time_step;
 check_inter = total_check_step / total_time_step - 1;
 
@@ -85,20 +85,24 @@ use_GP_inter = false;
 marm = generateMobileArm('SimpleTwoLinksArm');
 
 % GP
-Qc = 1 * eye(5);
+Qc = 0.1 * eye(5);
 Qc_model = noiseModel.Gaussian.Covariance(Qc);
 
 % noise model
-pose_fix_sigma = 0.0001; % Note that the noise model for sensor would be most likely different
+pose_fix_sigma = 0.1; % Note that the noise model for sensor would be most likely different
 vel_fix_sigma = 0.0001;
 
 % Obstacle avoid settings
-cost_sigma = 0.01;
+cost_sigma = 0.1;
 epsilon_dist = 0.5;
 
 % prior to start/goal
-pose_fix = noiseModel.Isotropic.Sigma(5, 0.1);
-vel_fix = noiseModel.Isotropic.Sigma(5, 0.0001);
+pose_fix = noiseModel.Isotropic.Sigma(5, pose_fix_sigma);
+vel_fix = noiseModel.Isotropic.Sigma(5, vel_fix_sigma);
+
+% Settings for prior pose --> encourages trajectory to go to goal
+prior_pose_fix_sigma = 0.1;
+prior_pose_fix = noiseModel.Isotropic.Sigma(5, prior_pose_fix_sigma);
 
 % start and end conf
 if debug == 0
@@ -113,7 +117,7 @@ start_conf = [0, 0]'; %angle values
 pstart = Pose2Vector(start_pose, start_conf);
 start_vel = [0, 0, 0, 0, 0]';
 
-end_pose = Pose2(7, 7, 0);
+end_pose = Pose2(7, 2, 0);
 end_conf = [0 0]';
 pend = Pose2Vector(end_pose, end_conf);
 end_vel = [0, 0, 0, 0, 0]';
@@ -154,7 +158,7 @@ graph = NonlinearFactorGraph;
 
 for i = 0 : total_time_step
     key_pos = symbol('x', i);
-    key_vel = symbol('v', i);
+    key_vel = symbol('v', i);    
     
     % start/end priors
     if i==0
@@ -163,6 +167,12 @@ for i = 0 : total_time_step
     elseif i==total_time_step
         graph.add(PriorFactorPose2Vector(key_pos, pend, pose_fix));
         graph.add(PriorFactorVector(key_vel, end_vel, vel_fix));
+    end
+    
+    if i < total_time_step 
+        key_pos_1 = symbol('x', i+1)
+        prior_pose = atPose2VectorValues(key_pos_1, init_values)
+        graph.add(PriorFactorPose2Vector(key_pos, pend, prior_pose_fix))
     end
     
     % cost factor
@@ -239,7 +249,7 @@ opt_setting.set_conf_prior_model(pose_fix_sigma);
 opt_setting.set_vel_prior_model(vel_fix_sigma);
 opt_setting.set_Qc_model(Qc);
 
-plot_trajectory(batch_values, total_time_step, 'b')
+% plot_trajectory(batch_values, total_time_step, 'b');
 
 
 %%STEAP
@@ -247,12 +257,14 @@ plot_trajectory(batch_values, total_time_step, 'b')
 time_sum = 0;
 time_iter = 0; 
 
-optimized_values = Values;
+optimized_values = init_values;
+
 global graph_lin;
-for i = 1 : total_time_step - 3
+for i = 2 : total_time_step - 1
+    disp("iterate");
     key_pos_0 = symbol('x', i);
     key_vel_0 = symbol('x', i);
-    x_0 = atPose2VectorValues(key_pos_0, batch_values);
+    x_0 = atPose2VectorValues(key_pos_0, optimized_values);
     
     x_0_x = x_0.pose.x;
     x_0_y = x_0.pose.y;
@@ -260,13 +272,13 @@ for i = 1 : total_time_step - 3
     x_0_conf = x_0.configuration;
     x_0_c1 = x_0_conf(1);
     x_0_c2 = x_0_conf(2);
-    x_0_array = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2]
+    x_0_array = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2];
     
-    if i == 1 || i == total_time_step %skip if iteration is start or goal
-        x_0_solution_pose = Pose2(x_0_x, x_0_y, x_0_t);
-        x_0_solution_config = [x_0_c1, x_0_c2]';
-        x_0_solution_vector = Pose2Vector(x_0_solution_pose, x_0_solution_config);
-        x_solution_vector = atPose2VectorValues(key_pos_0, init_values);
+    if i == 0 || i == total_time_step %skip if iteration is start or goal
+%         x_0_solution_pose = Pose2(x_0_x, x_0_y, x_0_t);
+%         x_0_solution_config = [x_0_c1, x_0_c2]';
+%         x_0_solution_vector = Pose2Vector(x_0_solution_pose, x_0_solution_config);
+%         x_solution_vector = atPose2VectorValues(key_pos_0, init_values);
     else
         if i > 2
             key_pos_m2 = symbol('x', i-2);
@@ -279,7 +291,7 @@ for i = 1 : total_time_step - 3
             x_m2_conf = x_m2.configuration;
             x_m2_c1 = x_m2_conf(1);
             x_m2_c2 = x_m2_conf(2);
-            x_m2_array = [x_m2_x x_m2_y x_m2_t x_m2_c1 x_m2_c2]
+            x_m2_array = [x_m2_x x_m2_y x_m2_t x_m2_c1 x_m2_c2];
         end
         if i > 1
             key_pos_m1 = symbol('x', i-1);
@@ -292,18 +304,26 @@ for i = 1 : total_time_step - 3
             x_m1_conf = x_m1.configuration;
             x_m1_c1 = x_m1_conf(1);
             x_m1_c2 = x_m1_conf(2);
-            x_m1_array = [x_m1_x x_m1_y x_m1_t x_m1_c1 x_m1_c2]
+            x_m1_array = [x_m1_x x_m1_y x_m1_t x_m1_c1 x_m1_c2];
         end
 
         if i < total_time_step - 1
             key_pos_1 = symbol('x', i+1);
             key_vel_1 = symbol('x', i+1);
-            x_1 = atPose2VectorValues(key_pos_1, batch_values);
+            x_1 = atPose2VectorValues(key_pos_1, optimized_values);
+            
+            x_1_x = x_1.pose.x;
+            x_1_y = x_1.pose.y;
+            x_1_t = x_1.pose.theta;
+            x_1_conf = x_1.configuration;
+            x_1_c1 = x_1_conf(1);
+            x_1_c2 = x_1_conf(2);
+            x_1_array = [x_1_x x_1_y x_1_t x_1_c1 x_1_c2];
         end
         if total_time_step - 2
             key_pos_2 = symbol('x', i+2);
             key_vel_2 = symbol('x', i+2);
-            x_2 = atPose2VectorValues(key_pos_2, batch_values);
+            x_2 = atPose2VectorValues(key_pos_2, optimized_values);
 
             x_2_x = x_2.pose.x;
             x_2_y = x_2.pose.y;
@@ -311,7 +331,7 @@ for i = 1 : total_time_step - 3
             x_2_conf = x_2.configuration;
             x_2_c1 = x_2_conf(1);
             x_2_c2 = x_2_conf(2);
-            x_2_array = [x_2_x x_2_y x_2_t x_2_c1 x_2_c2]
+            x_2_array = [x_2_x x_2_y x_2_t x_2_c1 x_2_c2];
         end
 
         % EXECUTE TRAJECTORY TO VARAIBLE i
@@ -324,13 +344,14 @@ for i = 1 : total_time_step - 3
         estimation_vector = Pose2Vector(estimation_pose, estimation_config);
 
         plot(x_ist, y_ist, 'O g');
-    %     plotPlanarMobileBase(marm.fk_model(), estimation_pose, [0.4 0.2], 'b', 1);
+%         plotPlanarMobileBase(marm.fk_model(), estimation_pose, [0.4 0.2], 'b', 1);
 
         % ADD MEASUREMENT FACTOR
-        graph.add(PriorFactorPose2Vector(key_pos_m1, estimation_vector, pose_fix));
+        estimate_cov = noiseModel.Isotropic.Sigma(5, 0.25);
+        graph.add(PriorFactorPose2Vector(key_pos_m1, estimation_vector, estimate_cov));
 
         %LINEARIZE GRAPH
-        graph_lin = graph.linearize(batch_values);
+        graph_lin = graph.linearize(optimized_values);
 
         %PERFORM MESSAGE PASSING
         %GET LINEARIZED FACTORS
@@ -343,7 +364,9 @@ for i = 1 : total_time_step - 3
         f_om1 =  get_obs_factor(i-1);
         f_o1 =  get_obs_factor(i);
 
-        f_mm1 = get_meas_factor(i-1)
+        f_mm1 = get_meas_factor(i-1);
+        
+        f_p0 = get_prior_factor(i);
 
         %retrieve A matrices & b vectors
         f_gpm1_A = f_gpm1.getA;
@@ -378,22 +401,22 @@ for i = 1 : total_time_step - 3
         f_mm1_A = f_mm1.getA;
         f_mm1_b = f_mm1.getb;
 
+        f_p0_A = f_p0.getA;
+        f_p0_b = x_1_array*10;
+        
         %CALCULATE MESSAGES
         %GP1 to x0
         m_gp1_x0_min = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp1_b)^2 + ...
                             0.5 * norm(f_gp2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
                             0.5 * norm(f_o1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_o1_b)^2);
-        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 0 0 0 0 0];
-        A = [];
-        b = [];
-        Aeq = [];
-        beq = [];
+        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 x_1_x x_1_y x_1_t x_1_c1 x_1_c2];
 
         lb = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 -inf -inf -inf -inf -inf];
         ub = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 inf inf inf inf inf];
 
-        m_graph_solution = fmincon(m_gp1_x0_min,x0,A,b ,Aeq,beq,lb,ub)
-        x_1_array = m_graph_solution([6, 7, 8, 9, 10])
+        options.Algorithm = 'levenberg-marquardt';
+        m_gp1_x0_min_solution = lsqnonlin(m_gp1_x0_min,x0,lb,ub, options);
+        x_1_array = m_gp1_x0_min_solution([6, 7, 8, 9, 10]);
 
         m_gp1_x0 = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose(x_1_array) - f_gp1_b)^2 + ...
                         0.5 * norm(f_gp2_A1 * transpose(x_1_array) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
@@ -413,43 +436,69 @@ for i = 1 : total_time_step - 3
         end
 
         %o0 to x0
-        m_o0_to_x0 = @(x) 0.5 * norm(f_o0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_o0_b)^2;
+        m_o0_x0 = @(x) 0.5 * norm(f_o0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_o0_b)^2;
+
+        m_prior_x0 = @(x) 0.5 * norm(f_p0_A * (10*transpose([x(1) x(2) x(3) x(4) x(5)])) - f_p0_b)^2;
 
         % CALCULATE BELIEF
-        belief = @(x) m_gp0_x0([x(1) x(2) x(3) x(4) x(5)]) + m_gp1_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_to_x0([x(1) x(2) x(3) x(4) x(5)]);
-        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 ];
-        A = [];
-        b = [];
-        Aeq = [];
-        beq = [];
+%         belief = @(x) m_gp0_x0([x(1) x(2) x(3) x(4) x(5)]) + m_gp1_x0([x(1) x(2) x(3) x(4) x(5)]) + m_prior_x0([x(1) x(2) x(3) x(4) x(5)]);
+        belief = @(x) m_gp0_x0([x(1) x(2) x(3) x(4) x(5)]) + m_gp1_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_x0([x(1) x(2) x(3) x(4) x(5)]);
+%         belief = @(x)  m_prior_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_to_x0([x(1) x(2) x(3) x(4) x(5)]);
+    
+    
 
-        lb = [0 0 0 0 0];
-        ub = [10 10 10 10 10];
+        figure(4), hold on
+        
+        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2];
 
-        x_0_solution = fmincon(belief,x0,A,b ,Aeq,beq,lb,ub)     
-        x_0_solution_pose = Pose2(x_0_solution(1), x_0_solution(2), x_0_solution(3));
+        lb = [0 0 -inf -inf -inf];
+        ub = [10 10 inf inf inf];
+
+        x_0_solution = lsqnonlin(belief,x0, lb,ub, options);
+        
+        x_0_x = x_0_solution(1);
+        x_0_y = x_0_solution(2);
+        x_0_t = x_0_solution(3);
+        x_0_solution_pose = Pose2(x_0_x, x_0_y, x_0_t);
         x_0_solution_config = [x_0_solution(4), x_0_solution(5)]';
         x_0_solution_vector = Pose2Vector(x_0_solution_pose, x_0_solution_config);
+        
+        %plot likelihoods
+        figure(5);
+        clf(5);
+        view(3)
+        hold on;
+        
+        fsurf(@(x, y) m_o0_x0([x y 0 0 0]), [0 10 0 10], 'b','MeshDensity',5);
+        fsurf(@(x, y) m_prior_x0([x y 0 0 0]), [0 10 0 10], 'g','MeshDensity',5)
+        fsurf(@(x, y) m_gp0_x0([x y 0 0 0]), [0 10 0 10], 'r','MeshDensity',5)
+        fsurf(@(x, y) m_gp1_x0([x y 0 0 0]), [0 10 0 10], 'c','MeshDensity',5)
+        
+        legend
     end
     
-    plotPlanarMobileBase(marm.fk_model(), x_0_solution_pose, [0.4 0.2], 'b', 1);
+    figure(4), hold on
     
+%     plotPlanarMobileBase(marm.fk_model(), x_0_solution_pose, [0.4 0.2], 'b', 1);
+    
+    optimized_values.erase(key_pos_0);
     insertPose2VectorInValues(key_pos_0, x_0_solution_vector, optimized_values);
+    plot(x_0_x, x_0_y, 'O r');
     
     
-%     parameters = LevenbergMarquardtParams;
-%     parameters.setVerbosity('ERROR');
-%     optimizer = LevenbergMarquardtOptimizer(m_graph, m_init_values, parameters);
-%     optimizer.optimize(); %needs only to be optimized with respect to 
-%     
-    
-    
-    
-    
-    
-%     if i == 10
-%         break;
-%     end
+    if i > 0 
+        p0_x = atPose2VectorValues(symbol('x', i), optimized_values).pose.x();
+        p0_y = atPose2VectorValues(symbol('x', i), optimized_values).pose.y();
+
+        p1_x = atPose2VectorValues(symbol('x', i-1), optimized_values).pose.x();
+        p1_y = atPose2VectorValues(symbol('x', i-1), optimized_values).pose.y();
+
+        %     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
+        plot([p0_x p1_x], [p0_y p1_y], 'r');
+    end 
+    plot_trajectory(optimized_values, total_time_step, 'b');
+
+    pause(1)
 end
 
 
@@ -458,19 +507,26 @@ time_sum;
 
 
 %% FUNCTIONS
+function factor = get_prior_factor(variable)
+    global graph_lin;
+    factor = graph_lin.at(3*variable + 1);
+end
 function factor = get_obs_factor(variable)
     global graph_lin;
-    factor = graph_lin.at((variable - 1) * 2 + 2 + 1)
+    if i == 0
+        factor = graph_lin.at(3);
+    else
+        factor = graph_lin.at(3*variable + 2);
+    end
 end
-
 function factor = get_gp_factor(variable)
     global graph_lin;
-    factor = graph_lin.at((variable - 1) * 2 + 2 + 2)
+    factor = graph_lin.at(3*variable + 3);
 end
 function factor = get_meas_factor(variable)
     global graph_lin;
     global num_factors;
-    factor = graph_lin.at(num_factors + (variable - 1))
+    factor = graph_lin.at(num_factors + (variable - 1));
 end
 
 
@@ -518,3 +574,67 @@ function plot_trajectory(values, plot_step, color)
         end
     end
 end
+
+function [x_ist, y_ist, t_ist] = send_goal(pos_x, pos_y, euler, debug)
+    if debug == 0
+        euler_vector = zeros(1, 3);
+        euler_vector(1) = euler;
+        quaternion_vector = eul2quat(euler_vector);
+        orient_x = quaternion_vector(3);
+        orient_y = quaternion_vector(2);
+        orient_z = quaternion_vector(1);
+        orient_w = quaternion_vector(4);
+
+        clear('goalReached', 'status')
+        chatpub = rospublisher("/move_base_simple/goal", "geometry_msgs/PoseStamped", "DataFormat", "struct");
+        goalMsg = rosmessage(chatpub);
+
+        goalMsg.Pose.Position.X = pos_x;
+        goalMsg.Pose.Position.Y = pos_y;
+        goalMsg.Pose.Position.Z = 0;
+
+        goalMsg.Pose.Orientation.X = orient_x;
+        goalMsg.Pose.Orientation.Y = orient_y;
+        goalMsg.Pose.Orientation.Z = orient_z;
+        goalMsg.Pose.Orientation.W = orient_w;
+
+        % goalMsg.Header.Seq = 9
+        [t, issim] = rostime('now','DataFormat','struct');
+        goalMsg.Header.Stamp.Sec = t.Sec;
+        goalMsg.Header.Stamp.Nsec = t.Nsec;
+        goalMsg.Header.FrameId = 'map';
+
+        send(chatpub, goalMsg);
+
+        pause(4)
+
+        goalReached = 0;
+        while goalReached == 0
+            pause(1)
+            [x_ist, y_ist, t_ist] = get_pose_estimate();
+
+            delta_x = abs(pos_x - x_ist);
+            delta_y = abs(pos_y - y_ist);
+            delta_t = abs(euler - t_ist);
+
+            if delta_x < (0.2 * pos_x) && delta_y < (0.2 * pos_y)
+                goalReached = 1;
+            end
+            fprintf("Driving\n");
+        end
+
+
+        fprintf("Goal Reached\n");
+    else
+        dist_max_noise = 0; %maximum noise in meter
+        theta_max_noise = 0;
+        x_noise = (rand - 0.5) * 2 * dist_max_noise;
+        y_noise = (rand - 0.5) * 2 * dist_max_noise;
+        t_noise = (rand - 0.5) * 2 * theta_max_noise;
+        
+        x_ist = pos_x + x_noise;
+        y_ist = pos_y + y_noise;
+        t_ist = euler + t_noise;
+    end
+end
+   

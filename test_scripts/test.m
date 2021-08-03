@@ -1,33 +1,23 @@
-% fun = @(x)100*(x(2)-x(1)^2)^2 + (1-x(1))^2;
-% 
-% x0 = [-1,2];
-% A = [1,2];
-% b = 1;
-% x = fmincon(fun,x0,A,b)
+        figure;
+        hold on;
+        minimum = 10000;
+        x_min = 0;
+        y_min = 0;
+        for x = 0:20
+           for y = 0:20
+               x_adj = x/2;
+               y_adj = y/2;
 
-A = eye(3)
-b = [1 1 0]
-% 
-% A_const = [];
-% b_const = [];
-% Aeq_const = [];
-% beq_const = [];
+               x_vector = [x_adj y_adj 0 0 0];
 
-% function C = mycost(x)
-% % created matrices A(150x50) & B(150x150)
-% % C = norm(0.5*(eye(3) * x - [1 1 0]))^2
-% C = 0.5
-% end
+               m_gp1_x0_likelihood = m_gp1_x0(x_vector);
+               m_gp0_x0_likelihood = m_gp0_x0(x_vector);
+               m_o0_to_x0_likelihood = m_o0_to_x0(x_vector);
+               m_prior_x1_likelihood = m_prior_x1(x_vector);
 
-fun = @(x) 0.5* norm(A * transpose([x(1) x(2) x(3)]) - transpose(b))^2;
-
-x0 = [2, 10, 0];
-A = [];
-b = [];
-
-Aeq = [];
-beq = [];
-
-lb = [10, -inf, 10];
-ub = [10, inf, 10];
-x = fmincon(fun,x0,A,b ,Aeq,beq,lb,ub)
+               plot3(x_adj, y_adj, m_gp1_x0_likelihood, '. r');
+               plot3(x_adj, y_adj, m_gp0_x0_likelihood, '. g');
+               plot3(x_adj, y_adj, m_o0_to_x0_likelihood, '. b');
+               plot3(x_adj, y_adj, m_prior_x1_likelihood, '. y');
+           end
+        end

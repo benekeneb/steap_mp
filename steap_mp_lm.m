@@ -93,7 +93,7 @@ pose_fix_sigma = 0.0001; % Note that the noise model for sensor would be most li
 vel_fix_sigma = 0.0001;
 
 % Obstacle avoid settings
-cost_sigma = 0.01;
+cost_sigma = 0.001;
 epsilon_dist = 0.5;
 
 % prior to start/goal
@@ -205,15 +205,15 @@ use_LM_opt = true;
 
 if use_trustregion_opt
     parameters = DoglegParams;
-    parameters.setVerbosity('ERROR');
+    parameters.setVerbosity('SILENT');
     optimizer = DoglegOptimizer(graph, init_values, parameters);
 elseif use_LM_opt
     parameters = LevenbergMarquardtParams;
-    parameters.setVerbosity('ERROR');
+    parameters.setVerbosity('SILENT');
     optimizer = LevenbergMarquardtOptimizer(graph, init_values, parameters);
 else
     parameters = GaussNewtonParams;
-    parameters.setVerbosity('ERROR');
+    parameters.setVerbosity('SILENT');
     optimizer = GaussNewtonOptimizer(graph, init_values, parameters);
 end
 
@@ -260,7 +260,7 @@ for i = 1 : total_time_step
     x_0_conf = x_0.configuration;
     x_0_c1 = x_0_conf(1);
     x_0_c2 = x_0_conf(2);
-    x_0_array = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2]
+    x_0_array = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2];
     
     if i == 1 || i == total_time_step %skip if iteration is start or goal
         insertPose2VectorInValues(key_pos_0, atPose2VectorValues(key_pos_0, init_values), optimized_values);
@@ -278,7 +278,7 @@ for i = 1 : total_time_step
         x_m2_conf = x_m2.configuration;
         x_m2_c1 = x_m2_conf(1);
         x_m2_c2 = x_m2_conf(2);
-        x_m2_array = [x_m2_x x_m2_y x_m2_t x_m2_c1 x_m2_c2]
+        x_m2_array = [x_m2_x x_m2_y x_m2_t x_m2_c1 x_m2_c2];
     end
     if i > 1
         key_pos_m1 = symbol('x', i-1);
@@ -291,7 +291,7 @@ for i = 1 : total_time_step
         x_m1_conf = x_m1.configuration;
         x_m1_c1 = x_m1_conf(1);
         x_m1_c2 = x_m1_conf(2);
-        x_m1_array = [x_m1_x x_m1_y x_m1_t x_m1_c1 x_m1_c2]
+        x_m1_array = [x_m1_x x_m1_y x_m1_t x_m1_c1 x_m1_c2];
     end
 
     if i < total_time_step - 1
@@ -310,7 +310,7 @@ for i = 1 : total_time_step
         x_2_conf = x_2.configuration;
         x_2_c1 = x_2_conf(1);
         x_2_c2 = x_2_conf(2);
-        x_2_array = [x_2_x x_2_y x_2_t x_2_c1 x_2_c2]
+        x_2_array = [x_2_x x_2_y x_2_t x_2_c1 x_2_c2];
     end
     
     % EXECUTE TRAJECTORY TO VARAIBLE i
@@ -348,15 +348,26 @@ for i = 1 : total_time_step
     m_init_values.insert(m_key_vel_1, zeros(4,1));
     m_init_values.insert(m_key_vel_2, zeros(4,1));
     
+    estimate_cov = noiseModel.Isotropic.Sigma(5, 0.25);
+    
     m_graph.add(GaussianProcessPriorPose2Vector(m_key_pos_0, m_key_vel_0, m_key_pos_1, m_key_vel_1, delta_t, Qc_model));
     m_graph.add(GaussianProcessPriorPose2Vector(m_key_pos_1, m_key_vel_1, m_key_pos_2, m_key_vel_2, delta_t, Qc_model));
-    m_graph.add(PriorFactorPose2Vector(m_key_pos_1, estimation_vector, pose_fix));
+    m_graph.add(PriorFactorPose2Vector(m_key_pos_1, estimation_vector, estimate_cov));
     m_graph.add(ObstaclePlanarSDFFactorPose2MobileArm(m_key_pos_1, marm, sdf2D, cost_sigma, epsilon_dist));
+    
+    % ADD UNARY FACTORS TO FIX x_0 & x_2
+    fix_cov = noiseModel.Isotropic.Sigma(5, 0.000000000001);
+    m_graph.add(PriorFactorPose2Vector(m_key_pos_0, x_0, fix_cov));
+    m_graph.add(PriorFactorPose2Vector(m_key_pos_2, x_2, fix_cov));
+    
     
     parameters = LevenbergMarquardtParams;
     parameters.setVerbosity('ERROR');
     optimizer = LevenbergMarquardtOptimizer(m_graph, m_init_values, parameters);
     optimizer.optimize(); %needs only to be optimized with respect to 
+    optimizer_values = optimizer.values();
+    
+    x_1_from_message = atPose2VectorValues(symbol('x', 1), optimizer_values)
     
     if i == 2
         break;

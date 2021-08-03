@@ -49,8 +49,8 @@ function [x_ist, y_ist, t_ist] = send_goal(pos_x, pos_y, euler, debug)
 
         fprintf("Goal Reached\n");
     else
-        dist_max_noise = 0.15; %maximum noise in meter
-        theta_max_noise = pi/32;
+        dist_max_noise = 0; %maximum noise in meter
+        theta_max_noise = 0;
         x_noise = (rand - 0.5) * 2 * dist_max_noise;
         y_noise = (rand - 0.5) * 2 * dist_max_noise;
         t_noise = (rand - 0.5) * 2 * theta_max_noise;
