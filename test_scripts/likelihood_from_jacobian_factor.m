@@ -18,8 +18,17 @@ b = f_p0_b;
 figure;
 hold on;
 
-m_prior_x0 = @(x) 0.5 * norm(f_p0_A * 100*transpose([x(1) x(2) x(3) x(4) x(5)]) - f_p0_b)^2;
+m_prior_x0 = @(x) 0.5 * norm(f_p0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_p0_b)^2;
 
-fsurf(@(x, y) m_prior_x0([x y 0 0 0]), [0 10 0 10], 'g','MeshDensity',5)
+% fsurf(@(x, y) m_prior_x0([x y 0 0 0]), [0 10 0 10], 'g','MeshDensity',15)
+
+x0 = [1 2 0 0 0];
+
+lb = [0 0 0 0 -0];
+ub = [10 10 0 0 0];
+
+x_0_solution = lsqnonlin(m_prior_x0,x0, lb,ub, options)
+
+
 view(3)
 hold off;

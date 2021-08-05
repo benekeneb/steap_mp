@@ -1,23 +1,21 @@
-        figure;
-        hold on;
-        minimum = 10000;
-        x_min = 0;
-        y_min = 0;
-        for x = 0:20
-           for y = 0:20
-               x_adj = x/2;
-               y_adj = y/2;
+x = optimvar('x', 2)
+func = @(x) x(1)^2/2 + x(2)^2 - x(1)*x(2) - 2*x(1) - 6*x(2)
+objec = fcn2optimexpr(func, x)
 
-               x_vector = [x_adj y_adj 0 0 0];
+% x = optimvar('x', 2)
+% objec = x(1)^2/2 + x(2)^2 - x(1)*x(2) - 2*x(1) - 6*x(2)
 
-               m_gp1_x0_likelihood = m_gp1_x0(x_vector);
-               m_gp0_x0_likelihood = m_gp0_x0(x_vector);
-               m_o0_to_x0_likelihood = m_o0_to_x0(x_vector);
-               m_prior_x1_likelihood = m_prior_x1(x_vector);
-
-               plot3(x_adj, y_adj, m_gp1_x0_likelihood, '. r');
-               plot3(x_adj, y_adj, m_gp0_x0_likelihood, '. g');
-               plot3(x_adj, y_adj, m_o0_to_x0_likelihood, '. b');
-               plot3(x_adj, y_adj, m_prior_x1_likelihood, '. y');
-           end
-        end
+prob = optimproblem('Objective',objec)
+% 
+options = optimoptions('quadprog')
+% 
+problem = prob2struct(prob)
+problem.solver = 'quadprog'
+problem.options = options
+% 
+% problem.lb = [0, 0]
+% problem.ub = [0, 0]
+% 
+% 
+% 
+quadprog(problem)

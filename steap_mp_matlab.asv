@@ -85,15 +85,15 @@ use_GP_inter = false;
 marm = generateMobileArm('SimpleTwoLinksArm');
 
 % GP
-Qc = 0.1 * eye(5);
+Qc = 10 * eye(5);
 Qc_model = noiseModel.Gaussian.Covariance(Qc);
 
 % noise model
-pose_fix_sigma = 0.1; % Note that the noise model for sensor would be most likely different
-vel_fix_sigma = 0.0001;
+pose_fix_sigma = 0.01; % Note that the noise model for sensor would be most likely different
+vel_fix_sigma = 0.001;
 
 % Obstacle avoid settings
-cost_sigma = 1;
+cost_sigma = 0.001;
 epsilon_dist = 0.5;
 
 % prior to start/goal
@@ -101,7 +101,7 @@ pose_fix = noiseModel.Isotropic.Sigma(5, pose_fix_sigma);
 vel_fix = noiseModel.Isotropic.Sigma(5, vel_fix_sigma);
 
 % Settings for prior pose --> encourages trajectory to go to goal
-prior_pose_fix_sigma = 0.1;
+prior_pose_fix_sigma = 0.01;
 prior_pose_fix = noiseModel.Isotropic.Sigma(5, prior_pose_fix_sigma);
 
 % start and end conf
@@ -117,7 +117,7 @@ start_conf = [0, 0]'; %angle values
 pstart = Pose2Vector(start_pose, start_conf);
 start_vel = [0, 0, 0, 0, 0]';
 
-end_pose = Pose2(7, 2, 0);
+end_pose = Pose2(7, 7, 0);
 end_conf = [0 0]';
 pend = Pose2Vector(end_pose, end_conf);
 end_vel = [0, 0, 0, 0, 0]';
@@ -170,7 +170,7 @@ for i = 0 : total_time_step
     end
     
     if i < total_time_step 
-        key_pos_1 = symbol('x', i+1)
+        key_pos_1 = symbol('x', i)
         prior_pose = atPose2VectorValues(key_pos_1, init_values)
         graph.add(PriorFactorPose2Vector(key_pos, prior_pose, prior_pose_fix))
     end
@@ -232,7 +232,7 @@ batch_values = optimizer.values();
 
 
 %% The iSAM update w.r.t to the updated factor graph
-figure(4), hold on
+figure(1), hold on
 % plot world
 plotEvidenceMap2D(dataset.map, dataset.origin_x, dataset.origin_y, cell_size);
 
@@ -258,6 +258,15 @@ time_sum = 0;
 time_iter = 0; 
 
 optimized_values = init_values;
+plot_trajectory(optimized_values, total_time_step, 'b');
+
+%SQP OPTIMIZER SETTINGS
+sqp_options = optimoptions('fmincon', 'Display', 'iter', 'Algorithm', 'sqp')
+A = [];
+b = [];
+Aeq = [];
+beq = [];
+nonlcon = [];
 
 global graph_lin;
 for i = 2 : total_time_step - 1
@@ -343,11 +352,10 @@ for i = 2 : total_time_step - 1
         estimation_config = [0, 0]';
         estimation_vector = Pose2Vector(estimation_pose, estimation_config);
 
-        plot(x_ist, y_ist, 'O g');
 %         plotPlanarMobileBase(marm.fk_model(), estimation_pose, [0.4 0.2], 'b', 1);
 
         % ADD MEASUREMENT FACTOR
-        estimate_cov = noiseModel.Isotropic.Sigma(5, 0.25);
+        estimate_cov = noiseModel.Isotropic.Sigma(5, 0.01);
         graph.add(PriorFactorPose2Vector(key_pos_m1, estimation_vector, estimate_cov));
 
         %LINEARIZE GRAPH
@@ -355,189 +363,191 @@ for i = 2 : total_time_step - 1
 
         %PERFORM MESSAGE PASSING
         %GET LINEARIZED FACTORS
-        f_gpm1 = get_gp_factor(i-1);
-        f_gp0 = get_gp_factor(i);
-        f_gp1 = get_gp_factor(i+1);
-        f_gp2 = get_gp_factor(i+2);
+        f_gp_m1 = get_gp_factor(i-1);
+        f_gp_0 = get_gp_factor(i);
+        f_gp_1 = get_gp_factor(i+1);
+        f_gp_2 = get_gp_factor(i+2);
 
-        f_o0 =  get_obs_factor(i);
-        f_om1 =  get_obs_factor(i-1);
-        f_o1 =  get_obs_factor(i);
+        f_o_0 =  get_obs_factor(i);
+        f_o_m1 =  get_obs_factor(i-1);
+        f_o_1 =  get_obs_factor(i);
 
-        f_mm1 = get_meas_factor(i-1);
+        f_m_m1 = get_meas_factor(i-1);
         
-        f_p0 = get_prior_factor(i);
+        f_p_m1 = get_prior_factor(i-1);
+        f_p_0 = get_prior_factor(i);
+        f_p_1 = get_prior_factor(i+1);
+        
 
         %retrieve A matrices & b vectors
-        f_gpm1_A = f_gpm1.getA;
-        f_gpm1_A1 = f_gpm1_A(:, [1,2,3,4,5]);
-        f_gpm1_A2 = f_gpm1_A(:, [11,12,13,14,15]);
-        f_gpm1_b = f_gpm1.getb;
+        f_gp_m1_A = f_gp_m1.getA;
+        f_gp_m1_A1 = f_gp_m1_A(:, [1,2,3,4,5]);
+        f_gp_m1_A2 = f_gp_m1_A(:, [11,12,13,14,15]);
+        f_gp_m1_b = f_gp_m1.getb;
 
-        f_gp0_A = f_gp0.getA;
-        f_gp0_A1 = f_gp0_A(:, [1,2,3,4,5]);
-        f_gp0_A2 = f_gp0_A(:, [11,12,13,14,15]);
-        f_gp0_b = f_gp0.getb;
+        f_gp_0_A = f_gp_0.getA;
+        f_gp_0_A1 = f_gp_0_A(:, [1,2,3,4,5]);
+        f_gp_0_A2 = f_gp_0_A(:, [11,12,13,14,15]);
+        f_gp_0_b = f_gp_0.getb;
 
-        f_gp1_A = f_gp1.getA;
-        f_gp1_A1 = f_gp1_A(:, [1,2,3,4,5]);
-        f_gp1_A2 = f_gp1_A(:, [11,12,13,14,15]);
-        f_gp1_b = f_gp1.getb;
+        f_gp_1_A = f_gp_1.getA;
+        f_gp_1_A1 = f_gp_1_A(:, [1,2,3,4,5]);
+        f_gp_1_A2 = f_gp_1_A(:, [11,12,13,14,15]);
+        f_gp_1_b = f_gp_1.getb;
 
-        f_gp2_A = f_gp2.getA;
-        f_gp2_A1 = f_gp2_A(:, [1,2,3,4,5]);
-        f_gp2_A2 = f_gp2_A(:, [11,12,13,14,15]);
-        f_gp2_b = f_gp2.getb;
+        f_gp_2_A = f_gp_2.getA;
+        f_gp_2_A1 = f_gp_2_A(:, [1,2,3,4,5]);
+        f_gp_2_A2 = f_gp_2_A(:, [11,12,13,14,15]);
+        f_gp_2_b = f_gp_2.getb;
 
-        f_om1_A =  f_om1.getA;
-        f_om1_b =  f_om1.getb;
+        f_o_m1_A =  f_o_m1.getA;
+        f_o_m1_b =  f_o_m1.getb;
 
-        f_o0_A = f_o0.getA;
-        f_o0_b = f_o0.getb;
+        f_o_0_A = f_o_0.getA;
+        f_o_0_b = f_o_0.getb;
 
-        f_o1_A = f_o1.getA;
-        f_o1_b = f_o1.getb;
+        f_o_1_A = f_o_1.getA;
+        f_o_1_b = f_o_1.getb;
 
-        f_mm1_A = f_mm1.getA;
-        f_mm1_b = f_mm1.getb;
+        f_m_m1_A = f_m_m1.getA;
+        f_m_m1_b = f_m_m1.getb;
 
-        f_p0_A = f_p0.getA;
-        f_p0_b = f_p0.getb;
+        f_p_m1_A = f_p_m1.getA;
+        f_p_m1_b = f_p_m1.getb;
+        f_p_0_A = f_p_0.getA;
+        f_p_0_b = f_p_0.getb;
+        f_p_1_A = f_p_1.getA;
+        f_p_1_b = f_p_1.getb;
+        
         
         %CALCULATE MESSAGES
-        %GP1 to x0
-        m_gp1_x0_min = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp1_b)^2 + ...
-                            0.5 * norm(f_gp2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
-                            0.5 * norm(f_o1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_o1_b)^2);
-        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 x_1_x x_1_y x_1_t x_1_c1 x_1_c2];
-
-        lb = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 -inf -inf -inf -inf -inf];
-        ub = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2 inf inf inf inf inf];
-
-        options.Algorithm = 'levenberg-marquardt';
-        m_gp1_x0_min_solution = lsqnonlin(m_gp1_x0_min,x0,lb,ub, options);
-        x_1_array = m_gp1_x0_min_solution([6, 7, 8, 9, 10]);
-
-        m_gp1_x0 = @(x) (0.5 * norm(f_gp1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp1_A2 * transpose(x_1_array) - f_gp1_b)^2 + ...
-                        0.5 * norm(f_gp2_A1 * transpose(x_1_array) + f_gp2_A2 * transpose(x_2_array) - f_gp2_b)^2 + ...
-                        0.5 * norm(f_o1_A * transpose(x_1_array) - f_o1_b)^2); 
-
-
         %GP0 to x0
+        likelihood_gp_0 = @(x) 0.5 * norm(f_gp_0_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp_0_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp_0_b)^2;
+        likelihood_gp_m1 = @(x) 0.5 * norm(f_gp_m1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp_m1_A2 * transpose(x_m2_array) - f_gp_m1_b)^2;
+        likelihood_o_m1 = @(x) 0.5 * norm(f_o_m1_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_o_m1_b)^2;
+        likelihood_m_m1 = @(x) 0.5 * norm(f_m_m1_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_m_m1_b)^2;
+        likelihood_p_m1 = @(x) 0.5 * norm(f_p_m1_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_p_m1_b)^2;
         if i > 2 % if first 
-            m_gp0_x0 = @(x) (0.5 * norm(f_gp0_A1 * transpose(x_m1_array) + f_gp0_A2 * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_gp0_b)^2 + ...
-                            0.5 * norm(f_gpm1_A1 * transpose(x_m1_array) + f_gpm1_A2 * transpose(x_m2_array) - f_gpm1_b)^2 + ...
-                            0.5 * norm(f_om1_A * transpose(x_m1_array) - f_om1_b)^2 + ...
-                            0.5 * norm(f_mm1_A * transpose(x_m1_array) - f_mm1_b)^2); 
+          m_gp0_x0_min = @(x) likelihood_gp_0([x(1) x(2) x(3) x(4) x(5) x(6) x(7) x(8) x(9) x(10)]) + likelihood_gp_m1([x(1) x(2) x(3) x(4) x(5)]) + ...
+                              likelihood_o_m1([x(1) x(2) x(3) x(4) x(5)]) + likelihood_m_m1([x(1) x(2) x(3) x(4) x(5)]) + ...
+                              likelihood_p_m1([x(1) x(2) x(3) x(4) x(5)]); 
         else 
-            m_gp0_x0 = @(x) (0.5 * norm(f_gp0_A1 * transpose(x_m1_array) + f_gp0_A2 * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_gp0_b)^2 + ...
-                            0.5 * norm(f_om1_A * transpose(x_m1_array) - f_om1_b)^2 + ...
-                            0.5 * norm(f_mm1_A * transpose(x_m1_array) - f_mm1_b)^2); 
+          m_gp0_x0_min = @(x) likelihood_gp_0([x(1) x(2) x(3) x(4) x(5) x(6) x(7) x(8) x(9) x(10)]) + ...
+                              likelihood_o_m1([x(1) x(2) x(3) x(4) x(5)]) + likelihood_m_m1([x(1) x(2) x(3) x(4) x(5)]) + ...
+                              likelihood_p_m1([x(1) x(2) x(3) x(4) x(5)]); 
         end
+        
+        x_init = [x_m1_x x_m1_y x_m1_t x_m1_c1 x_m1_c2 0 0 0 0 0]; % FIRST 5 VALUES: x_m1, LAST 5 VALUES: x_0
+        lb = [-inf -inf -inf 0 0 0 0 0 0 0];
+        ub = [inf inf inf 0 0 0 0 0 0 0];        
+        m_gp0_x0_min_solution = fmincon(m_gp0_x0_min, x_init, A, b, Aeq, beq, lb, ub, nonlcon, sqp_options);
+        
+        x_m1_array = x_m1_array + m_gp0_x0_min_solution([1, 2, 3, 4, 5]);
+        plot(x_m1_array(1), x_m1_array(2), 'O r');
+    
+        if i > 2 % if first 
+          m_gp0_x0 = @(x) likelihood_gp_0([x_m1_array(1) x_m1_array(2) x_m1_array(3) x_m1_array(4) x_m1_array(5) x(1) x(2) x(3) x(4) x(5)]) + ...
+                          likelihood_gp_m1(x_m1_array) +  likelihood_o_m1(x_m1_array) + likelihood_m_m1(x_m1_array) + likelihood_p_m1(x_m1_array); 
+        else 
+          m_gp0_x0 = @(x) likelihood_gp_0([x_m1_array(1) x_m1_array(2) x_m1_array(3) x_m1_array(4) x_m1_array(5) x(1) x(2) x(3) x(4) x(5)]) + ...
+                          likelihood_o_m1(x_m1_array) + likelihood_m_m1(x_m1_array) + likelihood_p_m1(x_m1_array);
+        end
+        
+        %GP1 to x0
+        likelihood_gp_1 = @(x) 0.5 * norm(f_gp_1_A1 * transpose([x(1) x(2) x(3) x(4) x(5)]) + f_gp_1_A2 * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_gp_1_b)^2;
+        likelihood_gp_2 = @(x) 0.5 * norm(f_gp_2_A1 * transpose([x(6) x(7) x(8) x(9) x(10)]) + f_gp_2_A2 * transpose(x_2_array) - f_gp_2_b)^2;
+        likelihood_o_1 = @(x) 0.5 * norm(f_o_1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_o_1_b)^2;
+        likelihood_p_1 = @(x) 0.5 * norm(f_p_1_A * transpose([x(6) x(7) x(8) x(9) x(10)]) - f_p_1_b)^2;
+        
+        if i < total_time_step - 2 % if first 
+          m_gp1_x0_min = @(x) likelihood_gp_1([x(1) x(2) x(3) x(4) x(5) x(6) x(7) x(8) x(9) x(10)]) + likelihood_gp_2([x(6) x(7) x(8) x(9) x(10)]) + ...
+                              likelihood_o_1([x(6) x(7) x(8) x(9) x(10)]) + likelihood_p_m1([x(6) x(7) x(8) x(9) x(10)]); 
+        else 
+          m_gp1_x0_min = @(x) likelihood_gp_1([x(1) x(2) x(3) x(4) x(5) x(6) x(7) x(8) x(9) x(10)]) + ...
+                              likelihood_o_1([x(6) x(7) x(8) x(9) x(10)]) + likelihood_p_m1([x(6) x(7) x(8) x(9) x(10)]); 
+        end                 
+        x_init = [0 0 0 0 0 x_1_x x_1_y x_1_t x_1_c1 x_1_c2]; % FIRST 5 VALUES: x_0, LAST 5 VALUES: x_1
+        lb = [0 0 0 0 0 -inf -inf -inf 0 0];
+        ub = [0 0 0 0 0 inf inf inf 0 0];
+        m_gp1_x0_min_solution = fmincon(m_gp1_x0_min, x_init, A, b, Aeq, beq, lb, ub, nonlcon, sqp_options);
+        
+        x_1_array = x_1_array + m_gp1_x0_min_solution([6, 7, 8, 9, 10]);
+        
+        if i < total_time_step - 2 % if first 
+          m_gp1_x0_min = @(x) likelihood_gp_1([x(1) x(2) x(3) x(4) x(5) x(6) x(7) x(8) x(9) x(10)]) + likelihood_gp_2([x(6) x(7) x(8) x(9) x(10)]) + ...
+                              likelihood_o_1([x(6) x(7) x(8) x(9) x(10)]) + likelihood_p_m1([x(6) x(7) x(8) x(9) x(10)]); 
+        else 
+          m_gp1_x0_min = @(x) likelihood_gp_1([x(1) x(2) x(3) x(4) x(5) x_1_array(1) x_1_array(2) x_1_array(3) x_1_array(4) x_1_array(5)]) + ...
+                              likelihood_o_1(x_1_array) + likelihood_p_m1(x_1_array); 
+        end  
 
         %o0 to x0
-        m_om1_to_x0 = @(x) 0.5 * norm(f_o0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_o0_b + x_0_array)^2;
-        
-        m_o0_to_x0 = @(x) 0.5 * norm(f_o0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_o0_b + x_0_array)^2;
-        m_o0_to_x0_xy = @(x, y) 0.5 * norm(f_o0_A * transpose([x y 0 0 0]) - f_o0_b + x_0_array)^2;
-        
-        m_prior_x0 = @(x) 0.5 * norm(f_p0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_p0_b + x_0_array)^2;
-        
-%         x0 = [1 1 1 0 0];
-%         lb = [0 0 -inf 0 0];
-%         ub = [10 10 inf 0 0];
-%         f_p0_b
-%         prior_min = lsqnonlin(m_prior_x1,x0,lb,ub, options)
+        m_o0_x0 = @(x) 0.5 * norm(f_o_0_A * transpose([x(1) x(2) x(3) x(4) x(5)]) - f_o_0_b)^2;
 
-        % CALCULATE BELIEF
-        belief = @(x) m_gp0_x0([x(1) x(2) x(3) x(4) x(5)]) + m_gp1_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_to_x0([x(1) x(2) x(3) x(4) x(5)]);
-%         belief = @(x)  m_prior_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_to_x0([x(1) x(2) x(3) x(4) x(5)]);
+        m_prior_x0 = @(x) 0.5 * norm(f_p_0_A * (transpose([x(1) x(2) x(3) x(4) x(5)])) - f_p_0_b)^2;
+        
+        plot_min_of_function(m_gp0_x0, x_0_array, "r");
+        plot_min_of_function(m_gp1_x0, x_0_array, "c");
+        plot_min_of_function(m_prior_x0, x_0_array, "g");
+        plot_min_of_function(m_o0_x0, x_0_array, "b");
+
+%         % CALCULATE BELIEF
+        belief = @(x) m_gp0_x0([x(1)-4 x(2)-4 x(3) x(4) x(5)]) + m_gp1_x0([x(1)-4 x(2)-4 x(3) x(4) x(5)]) + m_prior_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_x0([x(1) x(2) x(3) x(4) x(5)]);
+%         belief = @(x) m_gp0_x0([x(1) x(2) x(3) x(4) x(5)]) + m_gp1_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_x0([x(1) x(2) x(3) x(4) x(5)]);
+%         belief = @(x)  m_prior_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_x0([x(1) x(2) x(3) x(4) x(5)]) + m_gp0_x0([x(1) x(2) x(3) x(4) x(5)]);
+%         belief = @(x)  m_prior_x0([x(1) x(2) x(3) x(4) x(5)]) + m_o0_x0([x(1) x(2) x(3) x(4) x(5)]);
     
-    
-
-        figure(4), hold on
+        figure(1), hold on
         
-        x0 = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2];
-
-        lb = [0 0 -inf -inf -inf];
+        x_init = [x_0_x x_0_y x_0_t x_0_c1 x_0_c2];
+        lb = [-10 -10 -inf -inf -inf];
         ub = [10 10 inf inf inf];
-
-        x_0_solution = lsqnonlin(belief,x0, lb,ub, options);
+        x_0_solution = fmincon(belief, x_init, A, b, Aeq, beq, lb, ub, nonlcon, sqp_options);
         
-        x_0_x = x_0_solution(1);
-        x_0_y = x_0_solution(2);
-        x_0_t = x_0_solution(3);
+        x_0_x = x_0_x + x_0_solution(1);
+        x_0_y = x_0_y + x_0_solution(2);
+        x_0_t = x_0_t + x_0_solution(3);
         x_0_solution_pose = Pose2(x_0_x, x_0_y, x_0_t);
         x_0_solution_config = [x_0_solution(4), x_0_solution(5)]';
         x_0_solution_vector = Pose2Vector(x_0_solution_pose, x_0_solution_config);
         
         %plot likelihoods
-        figure(5);
-        clf(5);
+        figure(2);
+        clf(2);
         view(3)
         hold on;
-        minimum = 10000;
-        x_min = 0;
-        y_min = 0;
         
-        fsurf(m_o0_to_x0_xy, [0 5 -5 5])
+        % PLOT MESSAGES
+        fsurf(@(x, y) m_gp0_x0([x y 0 0 0]), [-10 10 -10 10], 'r','MeshDensity',5)
+        fsurf(@(x, y) m_gp1_x0([x y 0 0 0]), [-10 10 -10 10], 'c','MeshDensity',5)
+        fsurf(@(x, y) m_prior_x0([x y 0 0 0]), [-10 10 -10 10], 'g','MeshDensity',5)
+        fsurf(@(x, y) m_o0_x0([x y 0 0 0]), [-10 10 -10 10], 'b','MeshDensity',5);
+
+        %PLOT GP0 TO x0
+%         fsurf(@(x, y) likelihood_gp0([x y 0 0 0]), [-10 10 -10 10], 'b','MeshDensity',5);
+%         fsurf(@(x, y) likelihood_gp1([x y 0 0 0]), [-10 10 -10 10], 'g','MeshDensity',5)
+%         fsurf(@(x, y) likelihood_om1([x y 0 0 0]), [-10 10 -10 10], 'r','MeshDensity',5)
+%         fsurf(@(x, y) likelihood_mm1([x y 0 0 0]), [-10 10 -10 10], 'c','MeshDensity',5)
         
-%         for x = 0:20
-%            for y = 0:20
-%                x_adj = x/2;
-%                y_adj = y/2;
-% 
-%                x_vector = [x_adj y_adj 0 0 0];
-% 
-%                m_gp1_x0_likelihood = m_gp1_x0(x_vector);
-%                m_gp0_x0_likelihood = m_gp0_x0(x_vector);
-%                m_o0_to_x0_likelihood = m_o0_to_x0(x_vector);
-%                m_prior_x0_likelihood = m_prior_x0(x_vector);
-% 
-%                plot(x_0_x, x_0_y, 'O r');
-% %                plot3(x_adj, y_adj, m_gp1_x0_likelihood, '. r');
-% %                plot3(x_adj, y_adj, m_gp0_x0_likelihood, '. g');
-%                plot3(x_adj, y_adj, m_o0_to_x0_likelihood, '. b');
-% %                plot3(x_adj, y_adj, m_prior_x0_likelihood, '. r');
-%            end
-%         end
+        legend
     end
     
-    figure(4), hold on
+    figure(1), hold on
     
-%     plotPlanarMobileBase(marm.fk_model(), x_0_solution_pose, [0.4 0.2], 'b', 1);
+% %     plotPlanarMobileBase(marm.fk_model(), x_0_solution_pose, [0.4 0.2], 'b', 1);
     
     optimized_values.erase(key_pos_0);
     insertPose2VectorInValues(key_pos_0, x_0_solution_vector, optimized_values);
-    plot(x_0_x, x_0_y, 'O r');
-%     optimized_values.insert(key_pos_0, x_0_solution_vector);
     
-    
-    if i > 0 
-        p0_x = atPose2VectorValues(symbol('x', i), optimized_values).pose.x();
-        p0_y = atPose2VectorValues(symbol('x', i), optimized_values).pose.y();
+    p0_x = atPose2VectorValues(symbol('x', i), optimized_values).pose.x();
+    p0_y = atPose2VectorValues(symbol('x', i), optimized_values).pose.y();
 
-        p1_x = atPose2VectorValues(symbol('x', i-1), optimized_values).pose.x();
-        p1_y = atPose2VectorValues(symbol('x', i-1), optimized_values).pose.y();
-
-        %     plotPlanarMobileBase(robot.fk_model(), p, [0.4 0.2], 'b', 1);
-        plot([p0_x p1_x], [p0_y p1_y], 'r');
-    end
-
+    p1_x = atPose2VectorValues(symbol('x', i-1), optimized_values).pose.x();
+    p1_y = atPose2VectorValues(symbol('x', i-1), optimized_values).pose.y();
     
-%     parameters = LevenbergMarquardtParams;
-%     parameters.setVerbosity('ERROR');
-%     optimizer = LevenbergMarquardtOptimizer(m_graph, m_init_values, parameters);
-%     optimizer.optimize(); %needs only to be optimized with respect to 
-%     
+    plot([p0_x p1_x], [p0_y p1_y], 'g');
+    plot(x_0_x, x_0_y, 'O g');
     
-    
-    
-    
-    plot_trajectory(optimized_values, total_time_step, 'b');
-%     if i == 10
-%         break;
-%     end
     pause(1)
 end
 
@@ -569,6 +579,14 @@ function factor = get_meas_factor(variable)
     factor = graph_lin.at(num_factors + (variable - 1));
 end
 
+function plot_min_of_function(function_handle, x_init, color)
+    options.Algorithm = 'levenberg-marquardt';
+    lb = [-inf -inf -inf 0 0];
+    ub = [inf inf inf 0 0];
+    min = x_init + lsqnonlin(function_handle, x_init, lb, ub, options);
+        
+    plot(min(1), min(2), "x " + color);
+end
 
 %ROS Trajectory Service
 function provide_trajectory(Values, steps, debug)
